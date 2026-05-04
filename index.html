@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NUQUEST 자동 평가 도구</title>
+
+<!-- PDF.js (Mozilla) — PDF 텍스트 추출 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- SheetJS — 엑셀 생성 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+    margin: 0;
+    background: #f5f6f8;
+    color: #1f2933;
+    line-height: 1.55;
+  }
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 60px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-bottom: 1px solid #d6dbe1;
+    padding-bottom: 14px;
+    margin-bottom: 24px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  header .sub {
+    font-size: 13px;
+    color: #6b7480;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e1e5eb;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .form-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  input[type="password"], input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    padding: 8px 12px;
+    border: 1px solid #c8cdd4;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  button {
+    padding: 8px 16px;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: #fff;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover { background: #1d4ed8; }
+  button:disabled { background: #9ca3af; border-color: #9ca3af; cursor: not-allowed; }
+  button.secondary {
+    background: #fff;
+    color: #2563eb;
+  }
+  button.secondary:hover { background: #eff6ff; }
+  button.danger {
+    background: #fff;
+    color: #b42318;
+    border-color: #b42318;
+  }
+  .status {
+    font-size: 13px;
+    margin-top: 8px;
+  }
+  .status.ok { color: #027a48; }
+  .status.warn { color: #b54708; }
+  .status.err { color: #b42318; }
+  .notice {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #713f12;
+    margin-top: 10px;
+  }
+  .dropzone {
+    border: 2px dashed #c8cdd4;
+    border-radius: 8px;
+    padding: 32px 20px;
+    text-align: center;
+    background: #fafbfc;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .dropzone.hover {
+    border-color: #2563eb;
+    background: #eff6ff;
+  }
+  .dropzone p { margin: 4px 0; }
+  .dropzone .hint { color: #6b7480; font-size: 13px; }
+  .file-list {
+    margin-top: 14px;
+    list-style: none;
+    padding: 0;
+  }
+  .file-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid #e1e5eb;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: #fff;
+    font-size: 14px;
+  }
+  .file-list .name { flex: 1; }
+  .file-list .size { color: #6b7480; font-size: 12px; }
+  .file-list .remove {
+    border: none;
+    background: transparent;
+    color: #b42318;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .progress-list {
+    margin-top: 12px;
+    list-style: none;
+    padding: 0;
+  }
+  .progress-list li {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eef0f3;
+    font-size: 14px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .progress-list li:last-child { border-bottom: none; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .badge.wait { background: #f1f3f5; color: #6b7480; }
+  .badge.run  { background: #dbeafe; color: #1e40af; }
+  .badge.done { background: #d1fae5; color: #065f46; }
+  .badge.fail { background: #fee2e2; color: #991b1b; }
+
+  .result-block {
+    border: 1px solid #d6dbe1;
+    border-radius: 8px;
+    padding: 18px 20px;
+    background: #fff;
+    margin-bottom: 16px;
+  }
+  .result-block h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .result-block .meta {
+    font-size: 12px;
+    color: #6b7480;
+    margin-bottom: 12px;
+  }
+  .design-banner {
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    font-size: 13px;
+  }
+  .design-banner.ok { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+  .design-banner.no { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+  .domain {
+    margin-top: 16px;
+    border-top: 1px solid #eef0f3;
+    padding-top: 12px;
+  }
+  .domain-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .domain-title {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .domain-score {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .domain-score.우수 { background: #d1fae5; color: #065f46; }
+  .domain-score.보통 { background: #fef3c7; color: #92400e; }
+  .domain-score.부족 { background: #fee2e2; color: #991b1b; }
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.items td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f3f5;
+    vertical-align: top;
+  }
+  table.items td.indicator {
+    width: 32px;
+    text-align: center;
+    font-size: 18px;
+  }
+  table.items td.itemname {
+    width: 35%;
+  }
+  table.items td.evidence {
+    color: #4a5260;
+    font-size: 12.5px;
+  }
+  .evidence-quote {
+    font-style: italic;
+    color: #364152;
+    border-left: 3px solid #d6dbe1;
+    padding: 2px 8px;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .evidence-quote.warn { border-left-color: #f59e0b; }
+  .evidence-quote.fail { border-left-color: #ef4444; }
+  .summary-box {
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: #f8f9fb;
+    border: 1px solid #e1e5eb;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .summary-box .total {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .download-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+    color: #4a5260;
+    margin-top: 6px;
+  }
+  .legend span { display: inline-flex; gap: 4px; align-items: center; }
+  details summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: #2563eb;
+    margin-top: 6px;
+  }
+  details .content {
+    margin-top: 8px;
+    padding: 10px;
+    background: #f8f9fb;
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: #4a5260;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div>
+    <h1>NUQUEST 자동 평가 도구</h1>
+    <div class="sub">RCT 논문 PDF에 대한 NUQUEST 14개 항목 자동 평가 (Gemini API 사용)</div>
+  </div>
+  <div class="sub">v1.0</div>
+</header>
+
+<!-- 1. API 키 설정 -->
+<section class="card">
+  <h2>① Gemini API 키</h2>
+  <div class="form-row">
+    <input type="password" id="apiKey" placeholder="AIzaSy... 로 시작하는 키를 붙여넣으세요" autocomplete="off">
+    <button id="saveKey">저장</button>
+    <button id="clearKey" class="secondary">삭제</button>
+  </div>
+  <div id="keyStatus" class="status">상태: 미등록</div>
+  <div class="notice">
+    ⚠️ <b>무료 티어 사용 시 주의:</b> Google이 입력 내용(PDF 텍스트)을 모델 학습에 활용할 수 있습니다.
+    미발표 논문, 동료심사 중 원고, 기밀 자료의 평가에는 사용하지 마세요. 출판된 논문 평가에만 사용하세요.
+  </div>
+  <details>
+    <summary>키 발급 방법 (5분, 무료, 신용카드 불필요)</summary>
+    <div class="content">
+      1. <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> 접속<br>
+      2. 구글 계정 로그인 → 우측 상단 "Create API key" 클릭<br>
+      3. <code>AIzaSy</code>로 시작하는 문자열 복사 → 위 입력란에 붙여넣기 → "저장"<br>
+      한도: 일 약 1,500회 무료 (Gemini 2.5 Flash)
+    </div>
+  </details>
+</section>
+
+<!-- 2. PDF 업로드 -->
+<section class="card">
+  <h2>② RCT 논문 PDF 업로드 (최대 5개)</h2>
+  <div id="dropzone" class="dropzone">
+    <p>📄 PDF 파일을 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
+    <p class="hint">한 번에 5개까지 업로드 가능 · parallel-arm / crossover / acute RCT 대상</p>
+    <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none">
+  </div>
+  <ul id="fileList" class="file-list"></ul>
+  <div class="form-row" style="margin-top:12px;">
+    <button id="evaluateBtn" disabled>평가 시작</button>
+    <button id="clearAllBtn" class="secondary">전체 삭제</button>
+  </div>
+</section>
+
+<!-- 3. 진행 상황 -->
+<section class="card" id="progressCard" style="display:none;">
+  <h2>③ 진행 상황</h2>
+  <ul id="progressList" class="progress-list"></ul>
+</section>
+
+<!-- 4. 결과 -->
+<section id="resultsSection" style="display:none;">
+  <div class="card">
+    <h2>④ 평가 결과</h2>
+    <div class="legend">
+      <span>🟢 발췌 문장 PDF 일치 (신뢰)</span>
+      <span>🟡 유사 매칭 또는 검토 필요</span>
+      <span>🔴 PDF에서 발췌문 미발견</span>
+      <span>⚪ 적용되지 않음</span>
+    </div>
+    <div class="download-row">
+      <button id="downloadAllBtn">📥 전체 결과 통합 엑셀 다운로드</button>
+    </div>
+  </div>
+  <div id="results"></div>
+</section>
+
+</div>
+
+<script>
+// =============================================================
+// PDF.js worker 설정
+// =============================================================
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// =============================================================
+// NUQUEST 평가 항목 정의 (사용자 prompt 기반)
+// =============================================================
+const NUQUEST_ITEMS = [
+  // 영역 1
+  { id:'1.1', domain:1, domainName:'연구대상자 선정',
+    name:'연구대상자의 중재 그룹 배정은 무작위로 이루어졌다.',
+    guide:'"random", "randomized", "randomly assigned" 등의 표현이 있거나 무작위화 과정 서술 시 "예"; 관련 표현/서술 없으면 "아니오"' },
+  { id:'1.2', domain:1, domainName:'연구대상자 선정',
+    name:'적절한 배정 은폐 방법이 사용되었다.',
+    guide:'참가자 배정 은폐가 된 경우 "예"; open-label이거나 원물 섭취로 은폐 불가능 시 "아니오". (예: placebo가 형태/색/냄새 유사하게 제조, sealed envelope, code masking 등)' },
+  { id:'1.3', domain:1, domainName:'연구대상자 선정',
+    name:'실험 시작 시점에서 중재군과 대조군의 인구학적·건강학적 특성이 유사하였다.',
+    guide:'baseline comparability를 직접 제시하거나 crossover 연구이면 "예"; 그 외 특별 서술 없으면 "아니오"' },
+
+  // 영역 2
+  { id:'2.1', domain:2, domainName:'연구그룹 간 비교 가능성',
+    name:'연구대상자, 연구자, 평가자가 중재배정에 대해 맹검(blind)을 유지하였다.',
+    guide:'double-blind 또는 triple-blind 면 "예"; single-blind만으로는 "아니오". 1.2(참가자 배정 은폐)와 2.1(참가자/연구자/평가자 맹검)을 혼동하지 말 것' },
+  { id:'2.2', domain:2, domainName:'연구그룹 간 비교 가능성',
+    name:'그룹 간의 차이점은 중재 여부뿐이었다.',
+    guide:'중재 외 요인(식이/운동/생활습관) 통제 안내·지침 있으면 "예"; 특별 언급 없으면 "아니오"' },
+  { id:'2.3', domain:2, domainName:'연구그룹 간 비교 가능성',
+    name:'연구 완료 전 탈락률은 수용 가능한 수준이었으며, 이유가 적절히 보고되었다.',
+    guide:'탈락률 ≤20%(배정 대비 완료 기준) AND 탈락사유 보고 시 "예"; ≤20%지만 사유 미보고 또는 >20% 또는 탈락자수 산출 불가 시 "아니오". 분석대상자수만 제시되는 경우도 있으니 누락 주의' },
+  { id:'2.4', domain:2, domainName:'연구그룹 간 비교 가능성',
+    name:'모든 대상자는 배정된 그룹에서 분석되었다 (intention-to-treat 분석 적용).',
+    guide:'ITT, modified ITT, full analysis set 명시 또는 배정자수=분석자수면 "예"; PP 분석 명시 또는 배정자수≠분석자수면 "아니오"' },
+  { id:'2.5', domain:2, domainName:'연구그룹 간 비교 가능성',
+    name:'연구가 다기관에서 수행된 경우, 모든 기관에서 결과가 비교 가능하였다.',
+    guide:'다기관에서 center/site comparability 평가, center effect를 통계모형 반영, 또는 기관 간 결과 차이 없음 제시 시 "예"; 다기관이지만 정보 없음 시 "아니오"; 단일기관이면 "적용되지 않음"' },
+
+  // 영역 3
+  { id:'3.1', domain:3, domainName:'결과 측정',
+    name:'모든 주요 결과변수는 타당하고 신뢰성 있는 방법으로 측정되었다.',
+    guide:'측정방법, 도구/기기, 측정 조건 또는 참고문헌/타당성 근거 제시 시 "예"; 단순 지표명만 언급하고 측정법 설명 전혀 없으면 "아니오"' },
+
+  // 영역 4
+  { id:'4.1', domain:4, domainName:'영양특화 항목',
+    name:'연구 중인 중재의 빈도와 양이 정확하고 신뢰성 있게 측정된다.',
+    guide:'연구 중재 양과 빈도 제시 시 "예"; 양/빈도 미제시 시 "아니오"' },
+  { id:'4.2', domain:4, domainName:'영양특화 항목',
+    name:'관련된 사전(baseline) 노출이 측정되었으며 고려되었다.',
+    guide:'중재 관련 식이 사전 섭취량 조사 + 정량/통계 결과 제시 시 "예"; 미실시 또는 정량 결과 미제시 시 "아니오". 단순 지시(instruction)나 제한 안내만으로는 "예" 안 됨' },
+  { id:'4.3', domain:4, domainName:'영양특화 항목',
+    name:'모든 집단의 사전(baseline) 노출이 연구 기간 동안 유지되었다.',
+    guide:'중재 관련 식이 유지 여부 조사 + 정량/통계 결과 제시 시 "예"; 미실시/미제시 시 "아니오"; 단순 지시/제한 안내만으로 "예" 안 됨; 단회섭취 연구는 "적용되지 않음"' },
+  { id:'4.4', domain:4, domainName:'영양특화 항목',
+    name:'중재군과 대조군의 섭취(또는 적용) 준수가 신뢰할 수 있고 정확한 방식으로 모니터링된다.',
+    guide:'남은 시험식품 회수, pill count, 식이 기록, 감독관 감시 섭취 등 있으면 "예"; 명확한 방법 미제시 + 순응도 언급 없으면 "아니오"' },
+  { id:'4.5', domain:4, domainName:'영양특화 항목',
+    name:'중재와 결과 확인 간의 기간이 충분히 길어 효과를 관찰할 수 있었다.',
+    guide:'4주 이상 또는 4주 이하라도 설계 적절성 근거(이전 연구 인용 등) 제시 시 "예"; 4주 이하 + 근거 없음 시 "아니오"; 단회섭취는 "적용되지 않음"' },
+];
+
+const NUQUEST_DOMAINS = [
+  { num:1, name:'연구대상자 선정' },
+  { num:2, name:'연구그룹 간 비교 가능성' },
+  { num:3, name:'결과 측정' },
+  { num:4, name:'영양 특화 항목' },
+];
+
+// =============================================================
+// 시스템 프롬프트 (NUQUEST 평가 지침)
+// =============================================================
+const SYSTEM_PROMPT = `당신은 systematic review 전문가입니다. 제공된 RCT 논문 텍스트에 대해 아래 NUQUEST 14개 항목을 평가하세요.
+
+[공통 기본 원칙]
+1. randomized controlled trial (parallel-arm, crossover, acute randomized feeding trial 포함)에만 적용. 비무작위 중재연구, single-arm, observational study에는 적용하지 않음. RCT가 아니면 design_check.is_rct=false로 표시하고 사유를 design_check.exclusion_reason에 명시.
+2. 각 14개 항목에 대해 "예" / "아니오" / "적용되지 않음" 중 하나로 판단. 판단이 어렵거나 불명확하면 "아니오"로 표기하고 evidence_summary에 "불명확하여 검토 필요"를 포함.
+3. 근거(evidence_quote)는 반드시 논문에 실제로 적힌 문장을 그대로 발췌. 임의 요약 문장 금지.
+4. 각 항목별로 evidence_summary는 평가 기준에 따른 판단 근거 요약 서술.
+
+[항목별 평가 지침]
+${NUQUEST_ITEMS.map(it => `${it.id} ${it.name}\n   → ${it.guide}`).join('\n')}
+
+[출력 형식]
+반드시 아래 JSON 스키마를 따라 출력하세요. 다른 설명, 마크다운 코드블록, 주석 없이 JSON만 출력.
+
+{
+  "design_check": {
+    "is_rct": boolean,
+    "design_type": "parallel" | "crossover" | "acute" | "nonRCT" | "observational" | "single-arm",
+    "exclusion_reason": string
+  },
+  "items": [
+    {
+      "item_id": "1.1",
+      "judgment": "예" | "아니오" | "적용되지 않음",
+      "evidence_quote": "논문 원문에서 그대로 발췌한 문장",
+      "evidence_summary": "기준 기반 근거 요약 서술"
+    },
+    ... (총 14개 항목, item_id 1.1 ~ 4.5 순서)
+  ]
+}`;
+
+// =============================================================
+// API 키 관리 (브라우저 localStorage)
+// =============================================================
+const KEY_STORAGE = 'nuquest_gemini_api_key';
+const apiKeyInput = document.getElementById('apiKey');
+const keyStatus = document.getElementById('keyStatus');
+
+function loadKey() {
+  const k = localStorage.getItem(KEY_STORAGE);
+  if (k) {
+    apiKeyInput.value = k;
+    keyStatus.textContent = '상태: 등록됨 (' + k.slice(0,8) + '...' + k.slice(-4) + ')';
+    keyStatus.className = 'status ok';
+  } else {
+    keyStatus.textContent = '상태: 미등록';
+    keyStatus.className = 'status warn';
+  }
+}
+document.getElementById('saveKey').addEventListener('click', () => {
+  const k = apiKeyInput.value.trim();
+  if (!k) { alert('API 키를 입력하세요.'); return; }
+  if (!k.startsWith('AIza')) {
+    if (!confirm('일반적인 Gemini 키는 "AIza"로 시작합니다. 그래도 저장할까요?')) return;
+  }
+  localStorage.setItem(KEY_STORAGE, k);
+  loadKey();
+});
+document.getElementById('clearKey').addEventListener('click', () => {
+  localStorage.removeItem(KEY_STORAGE);
+  apiKeyInput.value = '';
+  loadKey();
+});
+loadKey();
+
+// =============================================================
+// 파일 업로드 관리
+// =============================================================
+let pendingFiles = []; // {file, id}
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileListEl = document.getElementById('fileList');
+const evaluateBtn = document.getElementById('evaluateBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('hover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('hover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('hover');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => addFiles(e.target.files));
+
+function addFiles(filelist) {
+  const arr = Array.from(filelist).filter(f => f.type === 'application/pdf');
+  if (arr.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
+  for (const f of arr) {
+    if (pendingFiles.length >= 5) {
+      alert('최대 5개까지 업로드 가능합니다. 먼저 등록된 파일을 삭제하거나 평가를 진행하세요.');
+      break;
+    }
+    pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7) });
+  }
+  renderFileList();
+}
+function renderFileList() {
+  fileListEl.innerHTML = '';
+  pendingFiles.forEach((entry, idx) => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span>📄</span>
+      <span class="name">${escapeHTML(entry.file.name)}</span>
+      <span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span>
+      <button class="remove" data-idx="${idx}">삭제</button>
+    `;
+    fileListEl.appendChild(li);
+  });
+  fileListEl.querySelectorAll('.remove').forEach(btn => {
+    btn.addEventListener('click', e => {
+      pendingFiles.splice(parseInt(e.target.dataset.idx), 1);
+      renderFileList();
+    });
+  });
+  evaluateBtn.disabled = pendingFiles.length === 0;
+}
+clearAllBtn.addEventListener('click', () => { pendingFiles = []; renderFileList(); });
+
+// =============================================================
+// PDF 텍스트 추출 (PDF.js)
+// =============================================================
+async function extractPdfText(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let fullText = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(it => it.str).join(' ');
+    fullText += pageText + '\n\n';
+  }
+  return fullText;
+}
+
+// =============================================================
+// Gemini API 호출
+// =============================================================
+async function callGemini(apiKey, paperText, fileName) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey);
+  const userPrompt = `[평가 대상 논문: ${fileName}]\n\n${paperText}`;
+  const body = {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+    },
+  };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('Gemini API 오류 (' + res.status + '): ' + errText.slice(0,300));
+  }
+  const data = await res.json();
+  const candidate = data.candidates && data.candidates[0];
+  if (!candidate) throw new Error('Gemini 응답에 candidates가 없음. 입력이 너무 길거나 차단되었을 수 있습니다.');
+  const text = candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text;
+  if (!text) throw new Error('Gemini 응답이 비어있습니다.');
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch (e) {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+    else throw new Error('Gemini 응답이 유효한 JSON이 아닙니다: ' + text.slice(0,200));
+  }
+  return parsed;
+}
+
+// =============================================================
+// 발췌 문장 검증 (PDF 원문 대조)
+// =============================================================
+function normalize(s) {
+  return (s || '').replace(/\s+/g, ' ').toLowerCase().trim();
+}
+function verifyEvidence(quote, pdfText) {
+  if (!quote || quote.trim() === '' || quote.includes('관련 언급 없음')) {
+    return 'na';
+  }
+  const nq = normalize(quote);
+  const np = normalize(pdfText);
+  if (nq.length < 6) return 'warn';
+  if (np.includes(nq)) return 'verified';
+  // 부분 매칭 (긴 문장이면 앞 80자라도 매칭되는지)
+  const head = nq.slice(0, Math.min(80, Math.floor(nq.length*0.8)));
+  if (head.length >= 20 && np.includes(head)) return 'partial';
+  // 단어 일치율 기반 판정
+  const tokens = nq.split(' ').filter(w => w.length >= 3);
+  if (tokens.length === 0) return 'unverified';
+  const matched = tokens.filter(t => np.includes(t)).length;
+  const ratio = matched / tokens.length;
+  if (ratio >= 0.85) return 'partial';
+  return 'unverified';
+}
+
+// =============================================================
+// 점수 계산 (사용자 prompt 기준 그대로)
+// =============================================================
+function calcDomainScore(items) {
+  const evaluable = items.filter(i => i.judgment !== '적용되지 않음');
+  if (evaluable.length === 0) return '적용되지 않음';
+  const yes = evaluable.filter(i => i.judgment === '예').length;
+  const no  = evaluable.filter(i => i.judgment === '아니오').length;
+  if (yes === evaluable.length) return '우수';
+  if (no > yes) return '부족';
+  // yes >= no 이지만 전부 예는 아닌 경우
+  return '보통';
+}
+function calcOverallScore(domainScores) {
+  const counts = { '우수':0, '보통':0, '부족':0 };
+  domainScores.forEach(s => { if (counts[s] !== undefined) counts[s]++; });
+  // 우수: 우수 4개, 또는 우수 3 + 보통 1
+  if (counts['우수'] === 4) return '우수';
+  if (counts['우수'] === 3 && counts['보통'] === 1 && counts['부족'] === 0) return '우수';
+  // 부족: 부족 3개 이상, 또는 부족 2 + 보통 2
+  if (counts['부족'] >= 3) return '부족';
+  if (counts['부족'] === 2 && counts['보통'] === 2) return '부족';
+  return '보통';
+}
+
+// =============================================================
+// 평가 파이프라인
+// =============================================================
+const progressCard = document.getElementById('progressCard');
+const progressList = document.getElementById('progressList');
+const resultsSection = document.getElementById('resultsSection');
+const resultsEl = document.getElementById('results');
+let allResults = []; // [{fileName, paperTitle, llmResult, verifications, domainScores, overall, pdfText}]
+
+evaluateBtn.addEventListener('click', async () => {
+  const apiKey = localStorage.getItem(KEY_STORAGE);
+  if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return; }
+  if (pendingFiles.length === 0) return;
+
+  evaluateBtn.disabled = true;
+  clearAllBtn.disabled = true;
+  progressCard.style.display = 'block';
+  resultsSection.style.display = 'none';
+  resultsEl.innerHTML = '';
+  progressList.innerHTML = '';
+  allResults = [];
+
+  const targets = pendingFiles.slice();
+  // 진행 상황 행 미리 생성
+  targets.forEach((entry, idx) => {
+    const li = document.createElement('li');
+    li.id = 'prog_' + entry.id;
+    li.innerHTML = `<span class="badge wait">대기</span><span>${idx+1}. ${escapeHTML(entry.file.name)}</span>`;
+    progressList.appendChild(li);
+  });
+
+  for (let i=0; i<targets.length; i++) {
+    const entry = targets[i];
+    const li = document.getElementById('prog_' + entry.id);
+    li.innerHTML = `<span class="badge run">진행중</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size" id="step_${entry.id}">PDF 텍스트 추출 중...</span>`;
+    try {
+      const pdfText = await extractPdfText(entry.file);
+      document.getElementById('step_' + entry.id).textContent = 'Gemini 평가 요청 중...';
+      const llmResult = await callGemini(apiKey, pdfText, entry.file.name);
+
+      // 14개 항목 보정 (LLM이 누락 시 빈 값으로 채움)
+      const itemsMap = {};
+      (llmResult.items || []).forEach(it => { itemsMap[it.item_id] = it; });
+      const items = NUQUEST_ITEMS.map(def => {
+        const got = itemsMap[def.id] || {};
+        return {
+          item_id: def.id,
+          name: def.name,
+          domain: def.domain,
+          domainName: def.domainName,
+          judgment: got.judgment || '아니오',
+          evidence_quote: got.evidence_quote || '',
+          evidence_summary: got.evidence_summary || '불명확하여 검토 필요',
+        };
+      });
+
+      // 발췌 검증
+      items.forEach(it => {
+        if (it.judgment === '적용되지 않음') it.verify = 'na';
+        else it.verify = verifyEvidence(it.evidence_quote, pdfText);
+      });
+
+      // 점수 계산
+      const domainScores = [1,2,3,4].map(d => {
+        const dItems = items.filter(it => it.domain === d);
+        return { domain:d, score: calcDomainScore(dItems) };
+      });
+      const overall = calcOverallScore(domainScores.map(d => d.score));
+
+      allResults.push({
+        fileName: entry.file.name,
+        paperTitle: deriveTitle(entry.file.name),
+        designCheck: llmResult.design_check || {},
+        items,
+        domainScores,
+        overall,
+        pdfText,
+      });
+
+      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">종합: ${overall}</span>`;
+    } catch (err) {
+      console.error(err);
+      li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
+    }
+  }
+
+  evaluateBtn.disabled = false;
+  clearAllBtn.disabled = false;
+  if (allResults.length > 0) {
+    resultsSection.style.display = 'block';
+    renderAllResults();
+  }
+});
+
+function deriveTitle(filename) {
+  return filename.replace(/\.pdf$/i, '').replace(/_/g, ' ');
+}
+
+// =============================================================
+// 결과 화면 렌더링
+// =============================================================
+function indicatorIcon(judgment, verify) {
+  if (judgment === '적용되지 않음') return '⚪';
+  if (judgment === '예') {
+    if (verify === 'verified') return '🟢';
+    if (verify === 'partial') return '🟡';
+    return '🔴';
+  }
+  if (judgment === '아니오') {
+    // "아니오" + 발췌가 "관련 언급 없음" 류면 정상이므로 초록
+    if (verify === 'na') return '🟢';
+    if (verify === 'verified') return '🟢';
+    if (verify === 'partial') return '🟡';
+    return '🟡'; // 아니오인데 발췌가 있는데 불일치 → 검토 필요
+  }
+  return '⚪';
+}
+
+function renderAllResults() {
+  resultsEl.innerHTML = '';
+  allResults.forEach((res, idx) => {
+    const block = document.createElement('div');
+    block.className = 'result-block';
+    const dc = res.designCheck || {};
+    const isRct = dc.is_rct !== false;
+    const designBanner = isRct
+      ? `<div class="design-banner ok">📄 RCT 적용 가능 (${dc.design_type || 'parallel/crossover/acute'})</div>`
+      : `<div class="design-banner no">⚠️ RCT가 아니므로 NUQUEST 적용 부적합: ${escapeHTML(dc.exclusion_reason || '사유 미상')}</div>`;
+
+    let domainsHTML = '';
+    NUQUEST_DOMAINS.forEach(d => {
+      const dItems = res.items.filter(it => it.domain === d.num);
+      const dScore = res.domainScores.find(x => x.domain === d.num).score;
+      domainsHTML += `
+        <div class="domain">
+          <div class="domain-header">
+            <span class="domain-title">영역 ${d.num}. ${d.name}</span>
+            <span class="domain-score ${dScore}">영역 평가: ${dScore}</span>
+          </div>
+          <table class="items">
+            <tbody>
+              ${dItems.map(it => `
+                <tr>
+                  <td class="indicator">${indicatorIcon(it.judgment, it.verify)}</td>
+                  <td class="itemname"><b>${it.item_id}</b> ${escapeHTML(it.name)}<br><span style="color:#6b7480;font-size:12px;">판정: ${it.judgment}</span></td>
+                  <td class="evidence">
+                    ${it.evidence_quote ? `<span class="evidence-quote ${verifyClass(it.verify)}">"${escapeHTML(it.evidence_quote)}"</span>` : '<span style="color:#9ca3af;">발췌 없음</span>'}
+                    <span>${escapeHTML(it.evidence_summary || '')}</span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    });
+
+    block.innerHTML = `
+      <h3>${idx+1}. ${escapeHTML(res.paperTitle)}</h3>
+      <div class="meta">${escapeHTML(res.fileName)}</div>
+      ${designBanner}
+      ${domainsHTML}
+      <div class="summary-box">
+        <div class="total">최종 종합 평가: <b>${res.overall}</b></div>
+        ${res.domainScores.map(d => `영역 ${d.domain}: <b>${d.score}</b>`).join(' / ')}
+      </div>
+      <div class="download-row">
+        <button class="secondary" data-idx="${idx}" data-action="download-one">📥 이 논문만 엑셀 다운로드</button>
+      </div>
+    `;
+    resultsEl.appendChild(block);
+  });
+
+  resultsEl.querySelectorAll('button[data-action="download-one"]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = parseInt(e.target.dataset.idx);
+      downloadExcel([allResults[idx]], 'NUQUEST_' + safeFilename(allResults[idx].paperTitle) + '.xlsx');
+    });
+  });
+}
+
+function verifyClass(v) {
+  if (v === 'verified' || v === 'na') return '';
+  if (v === 'partial') return 'warn';
+  return 'fail';
+}
+
+document.getElementById('downloadAllBtn').addEventListener('click', () => {
+  if (allResults.length === 0) return;
+  downloadExcel(allResults, 'NUQUEST_results_' + dateStamp() + '.xlsx');
+});
+
+// =============================================================
+// 엑셀 다운로드 (사용자가 제공한 양식 재현)
+// =============================================================
+function downloadExcel(results, filename) {
+  const wb = XLSX.utils.book_new();
+
+  // 시트 1: Experimental(RCT) — 사용자 양식 재현
+  const aoa = [];
+  // 1~3행 비움 + 헤더 안내
+  aoa.push(['']);
+  aoa.push(['', '', '', '', '논문 추가 시 아래 부분을 복사하여 오른쪽에 붙여넣기 해서 활용', '', '', '']);
+  aoa.push(['', '', '', '', '해당되는 항목에 숫자 1을 입력', '', '', '평가 근거 내용을 문헌에서 찾아 서술']);
+  // 4행: 논문명 헤더
+  const headerRow = ['', '영역', '', '평가항목'];
+  results.forEach(r => { headerRow.push(r.paperTitle); headerRow.push(''); headerRow.push(''); headerRow.push('출처'); });
+  aoa.push(headerRow);
+  // 5행: 예/아니오/적용되지않음 sub header
+  const subHeader = ['', '', '', ''];
+  results.forEach(() => { subHeader.push('예'); subHeader.push('아니오'); subHeader.push('적용되지않음'); subHeader.push(''); });
+  aoa.push(subHeader);
+
+  // 6~19행: 14개 평가 항목
+  NUQUEST_ITEMS.forEach((def, i) => {
+    const row = ['']; // A열 빈칸
+    // 영역 번호 / 영역명 (각 영역 첫 항목에만)
+    if (i === 0) { row.push(1); row.push('연구대상자 선정'); }
+    else if (i === 3) { row.push(2); row.push('연구그룹 간 비교 가능성'); }
+    else if (i === 8) { row.push(3); row.push('결과 측정'); }
+    else if (i === 9) { row.push(4); row.push('4. 영양특화 항목'); }
+    else { row.push(''); row.push(''); }
+    row.push(`${def.id} ${def.name}`);
+
+    results.forEach(r => {
+      const it = r.items.find(x => x.item_id === def.id);
+      row.push(it && it.judgment === '예' ? 1 : '');
+      row.push(it && it.judgment === '아니오' ? 1 : '');
+      row.push(it && it.judgment === '적용되지 않음' ? 1 : '');
+      // 출처 (발췌 + 요약)
+      const src = it
+        ? (it.evidence_quote ? `"${it.evidence_quote}"\n` : '') + (it.evidence_summary || '')
+        : '';
+      row.push(src);
+    });
+    aoa.push(row);
+  });
+
+  // 20행: 영역별 종합평가 헤더
+  const sumHead = ['', '영역별 종합평가', '', '영역'];
+  results.forEach(() => { sumHead.push('우수'); sumHead.push('보통'); sumHead.push('부족'); sumHead.push('메모'); });
+  aoa.push(sumHead);
+
+  // 21~24행: 영역별 점수
+  NUQUEST_DOMAINS.forEach(d => {
+    const row = ['', '', '', `${d.num}. ${d.name}`];
+    results.forEach(r => {
+      const ds = r.domainScores.find(x => x.domain === d.num).score;
+      row.push(ds === '우수' ? 1 : '');
+      row.push(ds === '보통' ? 1 : '');
+      row.push(ds === '부족' ? 1 : '');
+      row.push('');
+    });
+    aoa.push(row);
+  });
+
+  // 25행: 전체 종합평가
+  const finalRow = ['', '전체 종합평가', '', ''];
+  results.forEach(r => { finalRow.push(''); finalRow.push(r.overall); finalRow.push(''); finalRow.push(''); });
+  aoa.push(finalRow);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // 컬럼 너비 약간 조정
+  ws['!cols'] = [{wch:3}, {wch:8}, {wch:18}, {wch:60}];
+  for (let i=0; i<results.length; i++) {
+    ws['!cols'].push({wch:8}, {wch:8}, {wch:14}, {wch:60});
+  }
+  XLSX.utils.book_append_sheet(wb, ws, 'Experimental(RCT)');
+
+  // 시트 2: results 요약
+  const sumAoa = [
+    ['논문', '최종 종합 평가', '영역1 (대상자 선정)', '영역2 (비교 가능성)', '영역3 (결과 측정)', '영역4 (영양 특화)'],
+  ];
+  results.forEach(r => {
+    sumAoa.push([
+      r.paperTitle,
+      r.overall,
+      r.domainScores.find(x => x.domain === 1).score,
+      r.domainScores.find(x => x.domain === 2).score,
+      r.domainScores.find(x => x.domain === 3).score,
+      r.domainScores.find(x => x.domain === 4).score,
+    ]);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(sumAoa);
+  ws2['!cols'] = [{wch:50}, {wch:14}, {wch:18}, {wch:18}, {wch:18}, {wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'results');
+
+  XLSX.writeFile(wb, filename);
+}
+
+// =============================================================
+// 유틸
+// =============================================================
+function escapeHTML(s) {
+  return (s == null ? '' : String(s))
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function safeFilename(s) {
+  return (s || 'paper').replace(/[\\\/:*?"<>|]/g,'_').slice(0,80);
+}
+function dateStamp() {
+  const d = new Date();
+  return d.getFullYear().toString().slice(2) + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
+}
+</script>
+</body>
+</html>
