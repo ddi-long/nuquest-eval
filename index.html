@@ -20,9 +20,9 @@
     line-height: 1.55;
   }
   .container {
-    max-width: 1100px;
+    max-width: 1680px;
     margin: 0 auto;
-    padding: 24px 20px 60px;
+    padding: 24px 32px 60px;
   }
   header {
     display: flex;
@@ -307,6 +307,60 @@
   .judge-badge.아니오     { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
   .judge-badge.아마도아니오{ background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
   .judge-badge.적용되지않음{ background: #f1f3f5; color: #6b7480; border: 1px solid #d6dbe1; }
+
+  .ai-tag {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #6b7480;
+    align-self: center;
+    white-space: nowrap;
+  }
+
+  /* 사용자(검토자) 평가 패널 */
+  .user-eval {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #f0f6ff;
+    border: 1px solid #cfe0fb;
+    border-radius: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    align-items: center;
+  }
+  .user-eval .ue-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #1e40af;
+    white-space: nowrap;
+  }
+  .user-eval select.user-judge {
+    padding: 5px 8px;
+    border: 1px solid #c8cdd4;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-family: inherit;
+    background: #fff;
+  }
+  .user-eval input.user-note {
+    flex: 1;
+    min-width: 200px;
+    padding: 6px 10px;
+    border: 1px solid #c8cdd4;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-family: inherit;
+  }
+  .agree-flag {
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .agree-flag.same { background: #d1fae5; color: #065f46; }
+  .agree-flag.near { background: #fef3c7; color: #92400e; }
+  .agree-flag.diff { background: #fee2e2; color: #991b1b; }
 
   details.evidence-toggle { margin-top: 6px; }
   details.evidence-toggle > summary {
@@ -932,6 +986,26 @@ function judgeClass(j) {
   return j.replace(/\s+/g, ''); // '아마도 예' → '아마도예'
 }
 
+// 사용자(검토자) 판정과 AI 판정의 일치 정보
+function agreeInfo(aiJ, userJ) {
+  if (!userJ) return null;
+  if (userJ === aiJ) return { cls:'same', text:'✓ AI와 일치' };
+  if (normalizeJudgment(userJ) === normalizeJudgment(aiJ)) return { cls:'near', text:'≈ 경미한 차이' };
+  return { cls:'diff', text:'✗ AI와 불일치' };
+}
+function userJudgeOptions(selected) {
+  const opts = ['<option value="">(내 판정 선택)</option>'];
+  JUDGMENTS.forEach(j => opts.push(`<option value="${j}"${selected === j ? ' selected' : ''}>${j}</option>`));
+  return opts.join('');
+}
+function renderAgreeFlag(spanEl, aiJ, userJ) {
+  const info = agreeInfo(aiJ, userJ);
+  if (!info) { spanEl.className = 'agree-flag'; spanEl.textContent = ''; spanEl.style.display = 'none'; return; }
+  spanEl.className = 'agree-flag ' + info.cls;
+  spanEl.textContent = info.text;
+  spanEl.style.display = '';
+}
+
 function scoreCardHTML(label, score, note) {
   const cls = (score === '우수' || score === '보통' || score === '부족') ? score : '평가불가';
   return `
@@ -973,11 +1047,13 @@ function renderAllResults() {
       const itemsHTML = dItems.map(it => {
         const jc = judgeClass(it.judgment);
         const hasEvidence = it.evidence_quote || it.evidence_summary;
+        const flag = agreeInfo(it.judgment, it.userJudgment);
         return `
           <div class="item-row">
             <div class="item-head">
               <span class="item-id">${it.item_id}</span>
               <span class="item-name">${escapeHTML(it.name)}</span>
+              <span class="ai-tag">AI 판정</span>
               <span class="judge-badge ${jc}">${escapeHTML(it.judgment)}</span>
             </div>
             ${hasEvidence ? `
@@ -988,6 +1064,12 @@ function renderAllResults() {
                 <span>${escapeHTML(it.evidence_summary || '')}</span>
               </div>
             </details>` : ''}
+            <div class="user-eval">
+              <span class="ue-label">내 판정</span>
+              <select class="user-judge" data-ri="${idx}" data-id="${it.item_id}">${userJudgeOptions(it.userJudgment)}</select>
+              <span class="agree-flag ${flag ? flag.cls : ''}"${flag ? '' : ' style="display:none;"'}>${flag ? flag.text : ''}</span>
+              <input class="user-note" type="text" placeholder="메모 (논의 사항·이견 사유 등, 선택)" data-ri="${idx}" data-id="${it.item_id}" value="${escapeHTML(it.userNote || '')}">
+            </div>
           </div>`;
       }).join('');
       domainsHTML += `
@@ -1020,6 +1102,27 @@ function renderAllResults() {
     btn.addEventListener('click', e => {
       const idx = parseInt(e.currentTarget.dataset.idx);
       downloadExcel([allResults[idx]], 'NUQUEST_' + safeFilename(allResults[idx].paperTitle) + '.xlsx');
+    });
+  });
+
+  // 사용자(검토자) 판정·메모 입력 → 데이터 모델에 저장 (재렌더 없이 유지)
+  function findItem(ri, id) {
+    const res = allResults[ri];
+    return res && res.items.find(x => x.item_id === id);
+  }
+  resultsEl.querySelectorAll('select.user-judge').forEach(sel => {
+    sel.addEventListener('change', e => {
+      const it = findItem(parseInt(e.target.dataset.ri), e.target.dataset.id);
+      if (!it) return;
+      it.userJudgment = e.target.value;
+      const flagEl = e.target.parentElement.querySelector('.agree-flag');
+      if (flagEl) renderAgreeFlag(flagEl, it.judgment, it.userJudgment);
+    });
+  });
+  resultsEl.querySelectorAll('input.user-note').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const it = findItem(parseInt(e.target.dataset.ri), e.target.dataset.id);
+      if (it) it.userNote = e.target.value;
     });
   });
 }
@@ -1090,10 +1193,10 @@ function downloadExcel(results, filename) {
   aoa.push(['', '', '', '', '논문 추가 시 아래 부분을 복사하여 오른쪽에 붙여넣기 해서 활용', '', '', '']);
   aoa.push(['', '', '', '', '해당되는 항목에 숫자 1을 입력 (아마도 예→예, 아마도 아니오→아니오로 집계)', '', '', '평가 근거 내용을 문헌에서 찾아 서술']);
   const headerRow = ['', '영역', '', '평가항목'];
-  results.forEach(r => { headerRow.push(r.paperTitle); headerRow.push(''); headerRow.push(''); headerRow.push('출처'); });
+  results.forEach(r => { headerRow.push(r.paperTitle); headerRow.push(''); headerRow.push(''); headerRow.push('출처'); headerRow.push('내 판정'); headerRow.push('메모'); });
   aoa.push(headerRow);
   const subHeader = ['', '', '', ''];
-  results.forEach(() => { subHeader.push('예'); subHeader.push('아니오'); subHeader.push('적용되지않음'); subHeader.push(''); });
+  results.forEach(() => { subHeader.push('예'); subHeader.push('아니오'); subHeader.push('적용되지않음'); subHeader.push('(AI 근거)'); subHeader.push('(검토자)'); subHeader.push('(검토자)'); });
   aoa.push(subHeader);
 
   // 14개 평가 항목
@@ -1117,13 +1220,15 @@ function downloadExcel(results, filename) {
         ? `[${it.judgment}] ` + (it.evidence_quote ? `"${it.evidence_quote}"\n` : '') + (it.evidence_summary || '')
         : '';
       row.push(src);
+      row.push(it && it.userJudgment ? it.userJudgment : '');  // 내 판정 (검토자)
+      row.push(it && it.userNote ? it.userNote : '');          // 메모 (검토자)
     });
     aoa.push(row);
   });
 
   // 영역별 종합평가 헤더
   const sumHead = ['', '영역별 종합평가', '', '영역'];
-  results.forEach(() => { sumHead.push('우수'); sumHead.push('보통'); sumHead.push('부족'); sumHead.push('메모'); });
+  results.forEach(() => { sumHead.push('우수'); sumHead.push('보통'); sumHead.push('부족'); sumHead.push('메모'); sumHead.push(''); sumHead.push(''); });
   aoa.push(sumHead);
 
   // 영역별 점수
@@ -1134,24 +1239,24 @@ function downloadExcel(results, filename) {
       row.push(ds === '우수' ? 1 : '');
       row.push(ds === '보통' ? 1 : '');
       row.push(ds === '부족' ? 1 : '');
-      row.push('');
+      row.push(''); row.push(''); row.push('');
     });
     aoa.push(row);
   });
 
   // 기관 총점
   const rowA = ['', '기관 총점', '', '농산물 특성(영양특화 가중치 ↓)'];
-  results.forEach(r => { rowA.push(''); rowA.push(r.scoreA); rowA.push(''); rowA.push(riskLabel(r.scoreA)); });
+  results.forEach(r => { rowA.push(''); rowA.push(r.scoreA); rowA.push(''); rowA.push(riskLabel(r.scoreA)); rowA.push(''); rowA.push(''); });
   aoa.push(rowA);
   // NUQUEST 총점
   const rowB = ['', 'NUQUEST 총점', '', 'NUQUEST 원 기준'];
-  results.forEach(r => { rowB.push(''); rowB.push(r.scoreB); rowB.push(''); rowB.push(riskLabel(r.scoreB)); });
+  results.forEach(r => { rowB.push(''); rowB.push(r.scoreB); rowB.push(''); rowB.push(riskLabel(r.scoreB)); rowB.push(''); rowB.push(''); });
   aoa.push(rowB);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [{wch:3}, {wch:8}, {wch:18}, {wch:60}];
   for (let i=0; i<results.length; i++) {
-    ws['!cols'].push({wch:8}, {wch:8}, {wch:14}, {wch:60});
+    ws['!cols'].push({wch:8}, {wch:8}, {wch:14}, {wch:60}, {wch:12}, {wch:40});
   }
   XLSX.utils.book_append_sheet(wb, ws, 'Experimental(RCT)');
 
