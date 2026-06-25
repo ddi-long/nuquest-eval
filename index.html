@@ -479,7 +479,7 @@ const NUQUEST_ITEMS = [
     guide:'computer-generated, random number table, permuted block, stratified randomization 등 유효한 무작위화 방법이 표현되거나 "random/randomized/randomly assigned" 등 무작위화 과정이 서술되면 "예". 단, 모집(등록) 순서에 따라 배정한 것은 무작위 배정이 아니므로 "아니오". 관련 표현·서술이 전혀 없으면 "아니오".' },
   { id:'1.2', domain:1, domainName:'연구대상자 선정',
     name:'적절한 배정 은폐 방법이 사용되었다.',
-    guide:'배정 은폐 = 참가자가 연구에 들어오는 시점에 연구자가 어느 군에 배정될지 모르게 하는 절차. "예": 중앙배정(IVRS, web), 독립된 제3자/약제부 배정, SNOSE(순차번호+불투명+밀봉봉투), 동일외관 코드 용기, sealed envelope, code masking. "아니오": 홀짝·생년월일·공개 난수표·비불투명/미밀봉 봉투·모집자 직접배정 등을 언급했거나, "예"에 해당하는 용어 언급이 전혀 없어 은폐가 불충분한 경우. ※ 1.1(무작위화)·2.1(눈가림)과 구분: 은폐는 배정 "시점", 눈가림은 배정 "이후". 전원 모집 후 일괄 배정이면 은폐 위험은 거의 없음.' },
+    guide:'배정 은폐 = 참가자가 연구에 들어오는 시점에 연구자가 어느 군에 배정될지 모르게 하는 절차. "예": 중앙배정(IVRS, web), 독립된 제3자/약제부 배정, SNOSE(순차번호+불투명+밀봉봉투), 동일외관 코드 용기, sealed envelope, code masking. "아니오": 홀짝·생년월일·공개 난수표·비불투명/미밀봉 봉투·모집자 직접배정 등을 언급했거나, "예"에 해당하는 용어 언급이 전혀 없어 은폐가 불충분한 경우. ※ 1.1(무작위화)·2.1(눈가림)과 구분: 은폐는 배정 "시점", 눈가림은 배정 "이후". 전원 모집 후 일괄 배정이면 은폐 위험은 거의 없음. ※※ 중요: 논문에 "double-blind/이중맹검" 또는 "randomized"라고만 적혀 있다는 사실은 1.2(배정 은폐)의 근거가 아님 — 그것만으로 "예" 처리 금지. 위 "예" 목록의 구체적 은폐 절차가 명시될 때만 "예", 절차 서술이 모호하면 "아마도 예/아마도 아니오"로 표기.' },
   { id:'1.3', domain:1, domainName:'연구대상자 선정',
     name:'실험 시작 시점에서 중재군과 대조군의 인구학적·건강학적 특성이 유사하였다.',
     guide:'baseline comparability를 직접 제시하거나 crossover 연구이면 "예"; 그 외 특별 서술 없으면 "아니오"' },
@@ -487,7 +487,7 @@ const NUQUEST_ITEMS = [
   // 영역 2
   { id:'2.1', domain:2, domainName:'연구그룹 간 비교 가능성',
     name:'연구대상자, 연구자, 평가자가 중재배정에 대해 맹검(blind)을 유지하였다.',
-    guide:'눈가림 = 참가자·연구자가 배정을 모르게 함. 단일맹검=둘 중 하나, 이중맹검=둘 다. 영양연구에서 보충제·액상식이는 이중맹검이 가능하나, 식품/식이패턴/행동·교육 중재는 참가자·연구자 맹검이 어려움 → 이때는 결과평가자·분석자를 맹검. 맹검 곤란을 어떻게 완화했고 그 방법이 효과적이었는지 보고하면 "예". "예": 이중맹검, 또는 이중맹검 불가 중재(식품·식이패턴·행동 등)에서 결과평가자/분석자를 맹검하고 객관적 결과(바이오마커)로 비뚤림을 완화한 경우. 단일맹검도 그 중재에서 달성 가능한 수준의 맹검을 했고 미흡분의 비뚤림을 완화했으면 "예" 가능. "아니오": 이중맹검이 쉽게 가능(위약·시험식품 동일외관)했음에도 참가자만 맹검하고 평가자는 비맹검이며 결과도 주관적인 경우. ※ 1.2(은폐)와 혼동 금지.' },
+    guide:'눈가림 = 참가자·연구자가 배정을 모르게 함. 단일맹검=둘 중 하나, 이중맹검=둘 다. 영양연구에서 보충제·액상식이는 이중맹검이 가능하나, 식품/식이패턴/행동·교육 중재는 참가자·연구자 맹검이 어려움 → 이때는 결과평가자·분석자를 맹검. 맹검 곤란을 어떻게 완화했고 그 방법이 효과적이었는지 보고하면 "예". "예": 이중맹검, 또는 이중맹검 불가 중재(식품·식이패턴·행동 등)에서 결과평가자/분석자를 맹검하고 객관적 결과(바이오마커)로 비뚤림을 완화한 경우. 단일맹검도 그 중재에서 달성 가능한 수준의 맹검을 했고 미흡분의 비뚤림을 완화했으면 "예" 가능. "아니오": 이중맹검이 쉽게 가능(위약·시험식품 동일외관)했음에도 참가자만 맹검하고 평가자는 비맹검이며 결과도 주관적인 경우. ※ 1.2(은폐)와 혼동 금지. ※※ 중요: "double-blind/이중맹검"이라고 적혀 있어도 자동으로 "예"가 아님 — 그 중재에서 달성 가능한 수준의 맹검을 했는지, 미흡한 부분의 비뚤림을 어떻게 완화했는지(객관적 결과 사용·평가자/분석자 맹검 등)가 보고되어야 "예". 맹검 방법·완화책 서술이 부실하면 "아마도 예/아마도 아니오"로 표기.' },
   { id:'2.2', domain:2, domainName:'연구그룹 간 비교 가능성',
     name:'그룹 간의 차이점은 중재 여부뿐이었다.',
     guide:'보충제 금지·운동 금지 등 "안내·지시"만 한 것은 예방조치일 뿐 그것만으로는 "예" 불가 → "아니오". "예": 양 군에 동일하게 적용하고 실제 부가처치를 측정·보고하여 군 간 차이 없음을 확인한 경우, 또는 placebo 조성을 관찰 대상 영양분·중재 외에는 동일하게 맞춘 경우.' },
@@ -889,7 +889,7 @@ evaluateBtn.addEventListener('click', async () => {
         pdfText,
       });
 
-      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">총점 A: ${scoreA} · B: ${scoreB}</span>`;
+      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">기관: ${scoreA} · NUQUEST: ${scoreB}</span>`;
     } catch (err) {
       console.error(err);
       li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
@@ -956,8 +956,8 @@ function renderAllResults() {
     // 종합 점수 2종
     const scoreCards = `
       <div class="score-cards">
-        ${scoreCardHTML('최종 총점 A', res.scoreA, SCORE_A_NOTE)}
-        ${scoreCardHTML('최종 총점 B', res.scoreB, SCORE_B_NOTE)}
+        ${scoreCardHTML('기관 총점', res.scoreA, SCORE_A_NOTE)}
+        ${scoreCardHTML('NUQUEST 총점', res.scoreB, SCORE_B_NOTE)}
       </div>`;
 
     // 영역별 토글
@@ -977,8 +977,8 @@ function renderAllResults() {
               <span class="judge-badge ${jc}">${escapeHTML(it.judgment)}</span>
             </div>
             ${hasEvidence ? `
-            <details class="evidence-toggle">
-              <summary>근거 보기 (${escapeHTML(verifyText(it.verify))})</summary>
+            <details class="evidence-toggle" open>
+              <summary>근거 (${escapeHTML(verifyText(it.verify))})</summary>
               <div class="evidence-body">
                 ${it.evidence_quote ? `<span class="evidence-quote ${verifyClass(it.verify)}">"${escapeHTML(it.evidence_quote)}"</span>` : '<span style="color:#9ca3af;">원문 발췌 없음</span>'}
                 <span>${escapeHTML(it.evidence_summary || '')}</span>
@@ -1086,12 +1086,12 @@ function downloadExcel(results, filename) {
     aoa.push(row);
   });
 
-  // 총점 A
-  const rowA = ['', '최종 총점 A', '', '농산물 특성(영양특화 가중치 ↓)'];
+  // 기관 총점
+  const rowA = ['', '기관 총점', '', '농산물 특성(영양특화 가중치 ↓)'];
   results.forEach(r => { rowA.push(''); rowA.push(r.scoreA); rowA.push(''); rowA.push(riskLabel(r.scoreA)); });
   aoa.push(rowA);
-  // 총점 B
-  const rowB = ['', '최종 총점 B', '', 'NUQUEST 원 기준'];
+  // NUQUEST 총점
+  const rowB = ['', 'NUQUEST 총점', '', 'NUQUEST 원 기준'];
   results.forEach(r => { rowB.push(''); rowB.push(r.scoreB); rowB.push(''); rowB.push(riskLabel(r.scoreB)); });
   aoa.push(rowB);
 
@@ -1104,7 +1104,7 @@ function downloadExcel(results, filename) {
 
   // 시트 2: results 요약
   const sumAoa = [
-    ['논문', '총점 A (농산물 특성)', '총점 B (NUQUEST 원기준)', '영역1 (대상자 선정)', '영역2 (비교 가능성)', '영역3 (결과 측정)', '영역4 (영양 특화)'],
+    ['논문', '기관 총점 (농산물 특성)', 'NUQUEST 총점 (원 기준)', '영역1 (대상자 선정)', '영역2 (비교 가능성)', '영역3 (결과 측정)', '영역4 (영양 특화)'],
   ];
   results.forEach(r => {
     sumAoa.push([
