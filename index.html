@@ -183,8 +183,8 @@
   }
   .result-block h3 {
     margin: 0 0 6px;
-    font-size: 15px;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 700;
   }
   .result-block .meta {
     font-size: 12px;
@@ -198,62 +198,146 @@
     font-size: 13px;
   }
   .design-banner.ok { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
-  .design-banner.no { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
-  .domain {
-    margin-top: 16px;
-    border-top: 1px solid #eef0f3;
-    padding-top: 12px;
-  }
-  .domain-header {
+  .design-banner.no { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; font-weight: 500; }
+
+  /* ===== 종합 점수 카드 (2종) ===== */
+  .score-cards {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
     margin-bottom: 8px;
   }
-  .domain-title {
+  .score-card {
+    flex: 1;
+    min-width: 240px;
+    border: 1px solid #e1e5eb;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #fbfcfe;
+  }
+  .score-card .score-label {
+    font-size: 12px;
+    color: #6b7480;
+    margin-bottom: 8px;
+  }
+  .score-pill {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .score-pill.우수 { background: #d1fae5; color: #065f46; }
+  .score-pill.보통 { background: #fef3c7; color: #92400e; }
+  .score-pill.부족 { background: #fee2e2; color: #991b1b; }
+  .score-pill.평가불가 { background: #f1f3f5; color: #6b7480; }
+  .score-risk { font-size: 12.5px; color: #4a5260; margin-left: 8px; }
+  .score-note {
+    font-style: italic;
+    color: #98a2b3;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  /* ===== 영역 토글 ===== */
+  details.domain-toggle {
+    border: 1px solid #e6e9ee;
+    border-radius: 8px;
+    margin-top: 12px;
+    overflow: hidden;
+    background: #fff;
+  }
+  details.domain-toggle > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fb;
     font-weight: 600;
     font-size: 14px;
+    user-select: none;
   }
+  details.domain-toggle > summary::-webkit-details-marker { display: none; }
+  details.domain-toggle > summary::before {
+    content: "▸";
+    color: #98a2b3;
+    margin-right: 8px;
+    font-size: 12px;
+  }
+  details.domain-toggle[open] > summary::before { content: "▾"; }
+  .domain-title { flex: 1; }
   .domain-score {
     font-size: 12px;
-    padding: 2px 8px;
-    border-radius: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 600;
   }
   .domain-score.우수 { background: #d1fae5; color: #065f46; }
   .domain-score.보통 { background: #fef3c7; color: #92400e; }
   .domain-score.부족 { background: #fee2e2; color: #991b1b; }
-  table.items {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
+  .domain-score.적용되지않음 { background: #f1f3f5; color: #6b7480; }
+
+  .item-row {
+    padding: 12px 16px;
+    border-top: 1px solid #f1f3f5;
   }
-  table.items td {
-    padding: 8px 10px;
-    border-bottom: 1px solid #f1f3f5;
-    vertical-align: top;
+  .item-head {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
   }
-  table.items td.indicator {
-    width: 32px;
-    text-align: center;
-    font-size: 18px;
-  }
-  table.items td.itemname {
-    width: 35%;
-  }
-  table.items td.evidence {
-    color: #4a5260;
+  .item-id { font-weight: 700; color: #364152; white-space: nowrap; }
+  .item-name { flex: 1; font-size: 13.5px; }
+
+  /* 판정 배지 — 색상으로 명확히 */
+  .judge-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 11px;
+    border-radius: 14px;
     font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .judge-badge.예         { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+  .judge-badge.아마도예   { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+  .judge-badge.아니오     { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  .judge-badge.아마도아니오{ background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+  .judge-badge.적용되지않음{ background: #f1f3f5; color: #6b7480; border: 1px solid #d6dbe1; }
+
+  details.evidence-toggle { margin-top: 6px; }
+  details.evidence-toggle > summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    color: #2563eb;
+    list-style: none;
+    user-select: none;
+  }
+  details.evidence-toggle > summary::-webkit-details-marker { display: none; }
+  details.evidence-toggle > summary::before { content: "＋ "; color: #98a2b3; }
+  details.evidence-toggle[open] > summary::before { content: "－ "; }
+  .evidence-body {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: #f8f9fb;
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: #4a5260;
   }
   .evidence-quote {
     font-style: italic;
     color: #364152;
-    border-left: 3px solid #d6dbe1;
-    padding: 2px 8px;
-    margin-bottom: 4px;
+    border-left: 3px solid #6ee7b7;
+    padding: 4px 10px;
+    margin-bottom: 6px;
     display: block;
   }
   .evidence-quote.warn { border-left-color: #f59e0b; }
   .evidence-quote.fail { border-left-color: #ef4444; }
+
   .summary-box {
     margin-top: 16px;
     padding: 12px 14px;
@@ -261,11 +345,6 @@
     border: 1px solid #e1e5eb;
     border-radius: 6px;
     font-size: 13px;
-  }
-  .summary-box .total {
-    font-size: 15px;
-    font-weight: 600;
-    margin-bottom: 6px;
   }
   .download-row {
     display: flex;
@@ -280,15 +359,16 @@
     font-size: 12.5px;
     color: #4a5260;
     margin-top: 6px;
+    align-items: center;
   }
   .legend span { display: inline-flex; gap: 4px; align-items: center; }
-  details summary {
+  details.help summary {
     cursor: pointer;
     font-size: 13px;
     color: #2563eb;
     margin-top: 6px;
   }
-  details .content {
+  details.help .content {
     margin-top: 8px;
     padding: 10px;
     background: #f8f9fb;
@@ -306,7 +386,7 @@
     <h1>NUQUEST 자동 평가 도구</h1>
     <div class="sub">RCT 논문 PDF에 대한 NUQUEST 14개 항목 자동 평가 (Gemini API 사용)</div>
   </div>
-  <div class="sub">v1.0</div>
+  <div class="sub">v2.0</div>
 </header>
 
 <!-- 1. API 키 설정 -->
@@ -322,7 +402,7 @@
     ⚠️ <b>무료 티어 사용 시 주의:</b> Google이 입력 내용(PDF 텍스트)을 모델 학습에 활용할 수 있습니다.
     미발표 논문, 동료심사 중 원고, 기밀 자료의 평가에는 사용하지 마세요. 출판된 논문 평가에만 사용하세요.
   </div>
-  <details>
+  <details class="help">
     <summary>키 발급 방법 (5분, 무료, 신용카드 불필요)</summary>
     <div class="content">
       1. <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> 접속<br>
@@ -359,10 +439,19 @@
   <div class="card">
     <h2>④ 평가 결과</h2>
     <div class="legend">
-      <span>🟢 발췌 문장 PDF 일치 (신뢰)</span>
-      <span>🟡 유사 매칭 또는 검토 필요</span>
-      <span>🔴 PDF에서 발췌문 미발견</span>
-      <span>⚪ 적용되지 않음</span>
+      <span><b>판정:</b></span>
+      <span class="judge-badge 예">예</span>
+      <span class="judge-badge 아마도예">아마도 예</span>
+      <span class="judge-badge 아마도아니오">아마도 아니오</span>
+      <span class="judge-badge 아니오">아니오</span>
+      <span class="judge-badge 적용되지않음">적용 안 됨</span>
+    </div>
+    <div class="legend" style="margin-top:8px;">
+      <span><b>근거 검증:</b></span>
+      <span>🟢 발췌문 PDF 일치(신뢰)</span>
+      <span>🟡 유사 매칭·검토 필요</span>
+      <span>🔴 PDF 미발견(hallucination 의심)</span>
+      <span>⚪ 적용 안 됨</span>
     </div>
     <div class="download-row">
       <button id="downloadAllBtn">📥 전체 결과 통합 엑셀 다운로드</button>
@@ -381,16 +470,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // =============================================================
-// NUQUEST 평가 항목 정의 (사용자 prompt 기반)
+// NUQUEST 평가 항목 정의 (사용자 세부 기준 반영)
 // =============================================================
 const NUQUEST_ITEMS = [
   // 영역 1
   { id:'1.1', domain:1, domainName:'연구대상자 선정',
     name:'연구대상자의 중재 그룹 배정은 무작위로 이루어졌다.',
-    guide:'"random", "randomized", "randomly assigned" 등의 표현이 있거나 무작위화 과정 서술 시 "예"; 관련 표현/서술 없으면 "아니오"' },
+    guide:'computer-generated, random number table, permuted block, stratified randomization 등 유효한 무작위화 방법이 표현되거나 "random/randomized/randomly assigned" 등 무작위화 과정이 서술되면 "예". 단, 모집(등록) 순서에 따라 배정한 것은 무작위 배정이 아니므로 "아니오". 관련 표현·서술이 전혀 없으면 "아니오".' },
   { id:'1.2', domain:1, domainName:'연구대상자 선정',
     name:'적절한 배정 은폐 방법이 사용되었다.',
-    guide:'참가자 배정 은폐가 된 경우 "예"; open-label이거나 원물 섭취로 은폐 불가능 시 "아니오". (예: placebo가 형태/색/냄새 유사하게 제조, sealed envelope, code masking 등)' },
+    guide:'배정 은폐 = 참가자가 연구에 들어오는 시점에 연구자가 어느 군에 배정될지 모르게 하는 절차. "예": 중앙배정(IVRS, web), 독립된 제3자/약제부 배정, SNOSE(순차번호+불투명+밀봉봉투), 동일외관 코드 용기, sealed envelope, code masking. "아니오": 홀짝·생년월일·공개 난수표·비불투명/미밀봉 봉투·모집자 직접배정 등을 언급했거나, "예"에 해당하는 용어 언급이 전혀 없어 은폐가 불충분한 경우. ※ 1.1(무작위화)·2.1(눈가림)과 구분: 은폐는 배정 "시점", 눈가림은 배정 "이후". 전원 모집 후 일괄 배정이면 은폐 위험은 거의 없음.' },
   { id:'1.3', domain:1, domainName:'연구대상자 선정',
     name:'실험 시작 시점에서 중재군과 대조군의 인구학적·건강학적 특성이 유사하였다.',
     guide:'baseline comparability를 직접 제시하거나 crossover 연구이면 "예"; 그 외 특별 서술 없으면 "아니오"' },
@@ -398,10 +487,10 @@ const NUQUEST_ITEMS = [
   // 영역 2
   { id:'2.1', domain:2, domainName:'연구그룹 간 비교 가능성',
     name:'연구대상자, 연구자, 평가자가 중재배정에 대해 맹검(blind)을 유지하였다.',
-    guide:'double-blind 또는 triple-blind 면 "예"; single-blind만으로는 "아니오". 1.2(참가자 배정 은폐)와 2.1(참가자/연구자/평가자 맹검)을 혼동하지 말 것' },
+    guide:'눈가림 = 참가자·연구자가 배정을 모르게 함. 단일맹검=둘 중 하나, 이중맹검=둘 다. 영양연구에서 보충제·액상식이는 이중맹검이 가능하나, 식품/식이패턴/행동·교육 중재는 참가자·연구자 맹검이 어려움 → 이때는 결과평가자·분석자를 맹검. 맹검 곤란을 어떻게 완화했고 그 방법이 효과적이었는지 보고하면 "예". "예": 이중맹검, 또는 이중맹검 불가 중재(식품·식이패턴·행동 등)에서 결과평가자/분석자를 맹검하고 객관적 결과(바이오마커)로 비뚤림을 완화한 경우. 단일맹검도 그 중재에서 달성 가능한 수준의 맹검을 했고 미흡분의 비뚤림을 완화했으면 "예" 가능. "아니오": 이중맹검이 쉽게 가능(위약·시험식품 동일외관)했음에도 참가자만 맹검하고 평가자는 비맹검이며 결과도 주관적인 경우. ※ 1.2(은폐)와 혼동 금지.' },
   { id:'2.2', domain:2, domainName:'연구그룹 간 비교 가능성',
     name:'그룹 간의 차이점은 중재 여부뿐이었다.',
-    guide:'중재 외 요인(식이/운동/생활습관) 통제 안내·지침 있으면 "예"; 특별 언급 없으면 "아니오"' },
+    guide:'보충제 금지·운동 금지 등 "안내·지시"만 한 것은 예방조치일 뿐 그것만으로는 "예" 불가 → "아니오". "예": 양 군에 동일하게 적용하고 실제 부가처치를 측정·보고하여 군 간 차이 없음을 확인한 경우, 또는 placebo 조성을 관찰 대상 영양분·중재 외에는 동일하게 맞춘 경우.' },
   { id:'2.3', domain:2, domainName:'연구그룹 간 비교 가능성',
     name:'연구 완료 전 탈락률은 수용 가능한 수준이었으며, 이유가 적절히 보고되었다.',
     guide:'탈락률 ≤20%(배정 대비 완료 기준) AND 탈락사유 보고 시 "예"; ≤20%지만 사유 미보고 또는 >20% 또는 탈락자수 산출 불가 시 "아니오". 분석대상자수만 제시되는 경우도 있으니 누락 주의' },
@@ -423,16 +512,16 @@ const NUQUEST_ITEMS = [
     guide:'연구 중재 양과 빈도 제시 시 "예"; 양/빈도 미제시 시 "아니오"' },
   { id:'4.2', domain:4, domainName:'영양특화 항목',
     name:'관련된 사전(baseline) 노출이 측정되었으며 고려되었다.',
-    guide:'중재 관련 식이 사전 섭취량 조사 + 정량/통계 결과 제시 시 "예"; 미실시 또는 정량 결과 미제시 시 "아니오". 단순 지시(instruction)나 제한 안내만으로는 "예" 안 됨' },
+    guide:'"예": 보충의 경우 표적성분의 식이 급원 섭취를 고려한 검증된 FFQ·식사기록으로 측정하거나, 바이오마커로 기저 생체이용률(혈중농도 등)을 측정한 경우. (예: 토마토 라이코펜 효과 분석 시 케첩·소스 등 기타 급원을 포함한 검증 DB 기반 설문 또는 혈중 리코펜 측정.) ※ 교차설계에서 개인 간 기저차는 설계상 통제에 유리하나 무조건 "예" 아님. 교차설계 "예" 조건: (1) 각 period 시작 시 노출/바이오마커 측정으로 기저 복귀(적정 wash-out) 확인, (2) 이월(carry-over)·기수·순서 효과 점검, (3) 기간 중 배경 섭취 유지로 반감기 긴 성분의 짧은 washout에 따른 이월효과 해소 — 중 하나 충족. 측정 없이 가정만 했더라도 저자가 충분한 wash-out 기간의 근거를 제시했으면 "예". 단순 지시·제한 안내만으로는 "예" 불가.' },
   { id:'4.3', domain:4, domainName:'영양특화 항목',
     name:'모든 집단의 사전(baseline) 노출이 연구 기간 동안 유지되었다.',
-    guide:'중재 관련 식이 유지 여부 조사 + 정량/통계 결과 제시 시 "예"; 미실시/미제시 시 "아니오"; 단순 지시/제한 안내만으로 "예" 안 됨; 단회섭취 연구는 "적용되지 않음"' },
+    guide:'(4.2는 "기저 측정/복귀", 4.3은 "연구 기간 중 유지"로 구분.) 중재 관련 식이 유지 여부를 조사하고 정량/통계 결과를 제시하면 "예"; 미실시/미제시 시 "아니오"; 단회섭취 연구는 "적용되지 않음". 단순 지시·제한 안내만으로는 "예" 안 됨.' },
   { id:'4.4', domain:4, domainName:'영양특화 항목',
     name:'중재군과 대조군의 섭취(또는 적용) 준수가 신뢰할 수 있고 정확한 방식으로 모니터링된다.',
     guide:'남은 시험식품 회수, pill count, 식이 기록, 감독관 감시 섭취 등 있으면 "예"; 명확한 방법 미제시 + 순응도 언급 없으면 "아니오"' },
   { id:'4.5', domain:4, domainName:'영양특화 항목',
     name:'중재와 결과 확인 간의 기간이 충분히 길어 효과를 관찰할 수 있었다.',
-    guide:'4주 이상 또는 4주 이하라도 설계 적절성 근거(이전 연구 인용 등) 제시 시 "예"; 4주 이하 + 근거 없음 시 "아니오"; 단회섭취는 "적용되지 않음"' },
+    guide:'"예": 4주 이상, 또는 4주 이하라도 설계 적절성 근거(이전 연구 인용 등) 제시, 또는 저자가 제시하지 않았더라도 FDA·EFSA 등에서 측정 바이오마커에 대한 공식 기간 가이드라인이 있고 이를 충족한 경우. "아니오": 4주 이하 + 근거 없음. 단회섭취는 "적용되지 않음".' },
 ];
 
 const NUQUEST_DOMAINS = [
@@ -442,16 +531,25 @@ const NUQUEST_DOMAINS = [
   { num:4, name:'영양 특화 항목' },
 ];
 
+// 판정 라벨: 표시는 5개, 채점은 3개로 환산
+const JUDGMENTS = ['예', '아마도 예', '아니오', '아마도 아니오', '적용되지 않음'];
+function normalizeJudgment(j) {
+  if (j === '아마도 예') return '예';
+  if (j === '아마도 아니오') return '아니오';
+  if (j === '예' || j === '아니오' || j === '적용되지 않음') return j;
+  return '아니오'; // 알 수 없는 값은 보수적으로 아니오 처리
+}
+
 // =============================================================
 // 시스템 프롬프트 (NUQUEST 평가 지침)
 // =============================================================
 const SYSTEM_PROMPT = `당신은 systematic review 전문가입니다. 제공된 RCT 논문 텍스트에 대해 아래 NUQUEST 14개 항목을 평가하세요.
 
 [공통 기본 원칙]
-1. randomized controlled trial (parallel-arm, crossover, acute randomized feeding trial 포함)에만 적용. 비무작위 중재연구, single-arm, observational study에는 적용하지 않음. RCT가 아니면 design_check.is_rct=false로 표시하고 사유를 design_check.exclusion_reason에 명시.
-2. 각 14개 항목에 대해 "예" / "아니오" / "적용되지 않음" 중 하나로 판단. 판단이 어렵거나 불명확하면 "아니오"로 표기하고 evidence_summary에 "불명확하여 검토 필요"를 포함.
-3. 근거(evidence_quote)는 반드시 논문에 실제로 적힌 문장을 그대로 발췌. 임의 요약 문장 금지.
-4. 각 항목별로 evidence_summary는 평가 기준에 따른 판단 근거 요약 서술.
+1. randomized controlled trial (parallel-arm, crossover, acute randomized feeding trial 포함)에만 적용. 비무작위 중재연구, single-arm, observational study에는 적용하지 않음. RCT가 아니면 design_check.is_rct=false로 표시하고, design_check.design_type에 의심되는 설계 유형을, design_check.exclusion_reason에 사유를 명시.
+2. 각 14개 항목에 대해 "예" / "아마도 예" / "아마도 아니오" / "아니오" / "적용되지 않음" 중 하나로 판단. 근거가 명확하면 "예" 또는 "아니오", 근거가 부분적이거나 약하지만 방향성이 있으면 "아마도 예" 또는 "아마도 아니오"로 표기. ("확인불가"나 "판단 보류" 같은 회피 표기는 사용하지 말 것 — 반드시 위 5개 중 하나로 판단.)
+3. 근거(evidence_quote)는 반드시 논문에 실제로 적힌 문장을 그대로 발췌. 임의 요약 문장 금지. 관련 언급이 전혀 없으면 빈 문자열.
+4. 각 항목별로 evidence_summary는 평가 기준에 따른 판단 근거 요약 서술. 판정이 "아마도 예/아마도 아니오"이면 왜 단정하지 못했는지(검토 필요 사유)를 함께 적을 것.
 
 [항목별 평가 지침]
 ${NUQUEST_ITEMS.map(it => `${it.id} ${it.name}\n   → ${it.guide}`).join('\n')}
@@ -462,13 +560,13 @@ ${NUQUEST_ITEMS.map(it => `${it.id} ${it.name}\n   → ${it.guide}`).join('\n')}
 {
   "design_check": {
     "is_rct": boolean,
-    "design_type": "parallel" | "crossover" | "acute" | "nonRCT" | "observational" | "single-arm",
+    "design_type": "parallel" | "crossover" | "acute" | "nonRCT" | "observational" | "single-arm" | "cohort" | "case-control" | "cross-sectional" | "기타",
     "exclusion_reason": string
   },
   "items": [
     {
       "item_id": "1.1",
-      "judgment": "예" | "아니오" | "적용되지 않음",
+      "judgment": "예" | "아마도 예" | "아마도 아니오" | "아니오" | "적용되지 않음",
       "evidence_quote": "논문 원문에서 그대로 발췌한 문장",
       "evidence_summary": "기준 기반 근거 요약 서술"
     },
@@ -645,29 +743,68 @@ function verifyEvidence(quote, pdfText) {
 }
 
 // =============================================================
-// 점수 계산 (사용자 prompt 기준 그대로)
+// 점수 계산
 // =============================================================
+// 영역 점수: 판정을 3단계(예/아니오/적용되지않음)로 환산해 산정
 function calcDomainScore(items) {
-  const evaluable = items.filter(i => i.judgment !== '적용되지 않음');
+  const norm = items.map(i => normalizeJudgment(i.judgment));
+  const evaluable = norm.filter(j => j !== '적용되지 않음');
   if (evaluable.length === 0) return '적용되지 않음';
-  const yes = evaluable.filter(i => i.judgment === '예').length;
-  const no  = evaluable.filter(i => i.judgment === '아니오').length;
+  const yes = evaluable.filter(j => j === '예').length;
+  const no  = evaluable.filter(j => j === '아니오').length;
   if (yes === evaluable.length) return '우수';
   if (no > yes) return '부족';
   // yes >= no 이지만 전부 예는 아닌 경우
   return '보통';
 }
-function calcOverallScore(domainScores) {
-  const counts = { '우수':0, '보통':0, '부족':0 };
-  domainScores.forEach(s => { if (counts[s] !== undefined) counts[s]++; });
-  // 우수: 우수 4개, 또는 우수 3 + 보통 1
-  if (counts['우수'] === 4) return '우수';
-  if (counts['우수'] === 3 && counts['보통'] === 1 && counts['부족'] === 0) return '우수';
-  // 부족: 부족 3개 이상, 또는 부족 2 + 보통 2
-  if (counts['부족'] >= 3) return '부족';
-  if (counts['부족'] === 2 && counts['보통'] === 2) return '부족';
+
+// 영역 점수 → 우/보/부 카운트 (적용되지않음 영역은 보통으로 취급)
+function countScores(domainScores) {
+  const c = { 우수:0, 보통:0, 부족:0 };
+  domainScores.forEach(s => {
+    if (s === '우수') c.우수++;
+    else if (s === '부족') c.부족++;
+    else c.보통++; // 보통 또는 적용되지않음
+  });
+  return c;
+}
+
+// 총점 A: 농산물 특성 반영 — 영양특화(영역4) 가중치 하향
+// 우수: 주요 3영역 모두 우수 + 영양특화 보통 이상
+// 보통: 주요 3영역에 부족 없음 + 보통 1~2개  /  또는 주요 3영역 모두 우수인데 영양특화 부족
+// 부족: 주요 3영역에 부족 1개라도 있음  /  또는 주요 3영역 모두 보통
+function calcScoreA(domainScores) {
+  // domainScores: [d1, d2, d3, d4]
+  const main = domainScores.slice(0, 3);
+  const nut = domainScores[3];
+  const c = countScores(main);
+  if (c.우수 === 3) return (nut === '부족') ? '보통' : '우수';
+  if (c.부족 >= 1) return '부족';
+  if (c.보통 >= 3) return '부족';
+  return '보통'; // 주요 3영역: 부족 0, 보통 1~2
+}
+
+// 총점 B: NUQUEST 원 기준 — 4개 영역 동일 가중
+function calcScoreB(domainScores) {
+  const c = countScores(domainScores);
+  if (c.우수 === 4) return '우수';
+  if (c.우수 === 3 && c.보통 === 1) return '우수';
+  if (c.부족 === 4) return '부족';
+  if (c.부족 === 3 && c.보통 === 1) return '부족';
+  if (c.부족 === 3 && c.우수 === 1) return '부족';
+  if (c.부족 === 2 && c.보통 === 2) return '부족';
+  if (c.부족 === 2 && c.우수 === 1 && c.보통 === 1) return '부족';
   return '보통';
 }
+
+function riskLabel(score) {
+  if (score === '우수') return '바이어스 위험 낮음';
+  if (score === '보통') return '바이어스 위험 중간';
+  if (score === '부족') return '바이어스 위험 높음';
+  return '';
+}
+const SCORE_A_NOTE = '※ 해당 총점은 농산물 특성에 따라 영양특화 항목의 가중치를 낮춘 결과입니다.';
+const SCORE_B_NOTE = '※ 해당 총점은 NUQUEST 평가도구 원 기준에 따른 결과입니다.';
 
 // =============================================================
 // 평가 파이프라인
@@ -676,7 +813,7 @@ const progressCard = document.getElementById('progressCard');
 const progressList = document.getElementById('progressList');
 const resultsSection = document.getElementById('resultsSection');
 const resultsEl = document.getElementById('results');
-let allResults = []; // [{fileName, paperTitle, llmResult, verifications, domainScores, overall, pdfText}]
+let allResults = [];
 
 evaluateBtn.addEventListener('click', async () => {
   const apiKey = localStorage.getItem(KEY_STORAGE);
@@ -692,7 +829,6 @@ evaluateBtn.addEventListener('click', async () => {
   allResults = [];
 
   const targets = pendingFiles.slice();
-  // 진행 상황 행 미리 생성
   targets.forEach((entry, idx) => {
     const li = document.createElement('li');
     li.id = 'prog_' + entry.id;
@@ -714,12 +850,14 @@ evaluateBtn.addEventListener('click', async () => {
       (llmResult.items || []).forEach(it => { itemsMap[it.item_id] = it; });
       const items = NUQUEST_ITEMS.map(def => {
         const got = itemsMap[def.id] || {};
+        let judg = got.judgment;
+        if (!JUDGMENTS.includes(judg)) judg = '아니오';
         return {
           item_id: def.id,
           name: def.name,
           domain: def.domain,
           domainName: def.domainName,
-          judgment: got.judgment || '아니오',
+          judgment: judg,
           evidence_quote: got.evidence_quote || '',
           evidence_summary: got.evidence_summary || '불명확하여 검토 필요',
         };
@@ -727,7 +865,7 @@ evaluateBtn.addEventListener('click', async () => {
 
       // 발췌 검증
       items.forEach(it => {
-        if (it.judgment === '적용되지 않음') it.verify = 'na';
+        if (normalizeJudgment(it.judgment) === '적용되지 않음') it.verify = 'na';
         else it.verify = verifyEvidence(it.evidence_quote, pdfText);
       });
 
@@ -736,7 +874,9 @@ evaluateBtn.addEventListener('click', async () => {
         const dItems = items.filter(it => it.domain === d);
         return { domain:d, score: calcDomainScore(dItems) };
       });
-      const overall = calcOverallScore(domainScores.map(d => d.score));
+      const scoreArr = domainScores.map(d => d.score);
+      const scoreA = calcScoreA(scoreArr);
+      const scoreB = calcScoreB(scoreArr);
 
       allResults.push({
         fileName: entry.file.name,
@@ -744,11 +884,12 @@ evaluateBtn.addEventListener('click', async () => {
         designCheck: llmResult.design_check || {},
         items,
         domainScores,
-        overall,
+        scoreA,
+        scoreB,
         pdfText,
       });
 
-      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">종합: ${overall}</span>`;
+      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">총점 A: ${scoreA} · B: ${scoreB}</span>`;
     } catch (err) {
       console.error(err);
       li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
@@ -770,21 +911,34 @@ function deriveTitle(filename) {
 // =============================================================
 // 결과 화면 렌더링
 // =============================================================
-function indicatorIcon(judgment, verify) {
-  if (judgment === '적용되지 않음') return '⚪';
-  if (judgment === '예') {
-    if (verify === 'verified') return '🟢';
-    if (verify === 'partial') return '🟡';
-    return '🔴';
-  }
-  if (judgment === '아니오') {
-    // "아니오" + 발췌가 "관련 언급 없음" 류면 정상이므로 초록
-    if (verify === 'na') return '🟢';
-    if (verify === 'verified') return '🟢';
-    if (verify === 'partial') return '🟡';
-    return '🟡'; // 아니오인데 발췌가 있는데 불일치 → 검토 필요
-  }
+// 근거 검증 신호등 (발췌가 PDF 원문에 실재하는지 = hallucination 점검)
+function verifyText(verify) {
+  if (verify === 'verified') return '🟢 발췌문 PDF 일치';
+  if (verify === 'na') return '🟢 발췌 불필요(관련 언급 없음)';
+  if (verify === 'partial') return '🟡 유사 매칭 — 검토 권장';
+  if (verify === 'unverified') return '🔴 PDF에서 발췌문 미발견 — 검토 필요';
   return '⚪';
+}
+function verifyClass(v) {
+  if (v === 'verified' || v === 'na') return '';
+  if (v === 'partial') return 'warn';
+  return 'fail';
+}
+function judgeClass(j) {
+  return j.replace(/\s+/g, ''); // '아마도 예' → '아마도예'
+}
+
+function scoreCardHTML(label, score, note) {
+  const cls = (score === '우수' || score === '보통' || score === '부족') ? score : '평가불가';
+  return `
+    <div class="score-card">
+      <div class="score-label">${escapeHTML(label)}</div>
+      <div>
+        <span class="score-pill ${cls}">${escapeHTML(score)}</span>
+        <span class="score-risk">${escapeHTML(riskLabel(score))}</span>
+      </div>
+      <div class="score-note">${escapeHTML(note)}</div>
+    </div>`;
 }
 
 function renderAllResults() {
@@ -794,47 +948,63 @@ function renderAllResults() {
     block.className = 'result-block';
     const dc = res.designCheck || {};
     const isRct = dc.is_rct !== false;
+    const dtype = dc.design_type || '비RCT';
     const designBanner = isRct
-      ? `<div class="design-banner ok">📄 RCT 적용 가능 (${dc.design_type || 'parallel/crossover/acute'})</div>`
-      : `<div class="design-banner no">⚠️ RCT가 아니므로 NUQUEST 적용 부적합: ${escapeHTML(dc.exclusion_reason || '사유 미상')}</div>`;
+      ? `<div class="design-banner ok">📄 RCT 적용 가능 (${escapeHTML(dc.design_type || 'parallel/crossover/acute')})</div>`
+      : `<div class="design-banner no">⚠️ '${escapeHTML(dtype)}' 설계 연구로 의심됩니다. 해당 평가도구는 RCT 평가용이므로 연구설계를 재확인 후 업로드해주세요.${dc.exclusion_reason ? '<br><span style="font-weight:400;">사유: ' + escapeHTML(dc.exclusion_reason) + '</span>' : ''}</div>`;
 
+    // 종합 점수 2종
+    const scoreCards = `
+      <div class="score-cards">
+        ${scoreCardHTML('최종 총점 A', res.scoreA, SCORE_A_NOTE)}
+        ${scoreCardHTML('최종 총점 B', res.scoreB, SCORE_B_NOTE)}
+      </div>`;
+
+    // 영역별 토글
     let domainsHTML = '';
     NUQUEST_DOMAINS.forEach(d => {
       const dItems = res.items.filter(it => it.domain === d.num);
       const dScore = res.domainScores.find(x => x.domain === d.num).score;
+      const dScoreCls = dScore === '적용되지 않음' ? '적용되지않음' : dScore;
+      const itemsHTML = dItems.map(it => {
+        const jc = judgeClass(it.judgment);
+        const hasEvidence = it.evidence_quote || it.evidence_summary;
+        return `
+          <div class="item-row">
+            <div class="item-head">
+              <span class="item-id">${it.item_id}</span>
+              <span class="item-name">${escapeHTML(it.name)}</span>
+              <span class="judge-badge ${jc}">${escapeHTML(it.judgment)}</span>
+            </div>
+            ${hasEvidence ? `
+            <details class="evidence-toggle">
+              <summary>근거 보기 (${escapeHTML(verifyText(it.verify))})</summary>
+              <div class="evidence-body">
+                ${it.evidence_quote ? `<span class="evidence-quote ${verifyClass(it.verify)}">"${escapeHTML(it.evidence_quote)}"</span>` : '<span style="color:#9ca3af;">원문 발췌 없음</span>'}
+                <span>${escapeHTML(it.evidence_summary || '')}</span>
+              </div>
+            </details>` : ''}
+          </div>`;
+      }).join('');
       domainsHTML += `
-        <div class="domain">
-          <div class="domain-header">
+        <details class="domain-toggle" open>
+          <summary>
             <span class="domain-title">영역 ${d.num}. ${d.name}</span>
-            <span class="domain-score ${dScore}">영역 평가: ${dScore}</span>
-          </div>
-          <table class="items">
-            <tbody>
-              ${dItems.map(it => `
-                <tr>
-                  <td class="indicator">${indicatorIcon(it.judgment, it.verify)}</td>
-                  <td class="itemname"><b>${it.item_id}</b> ${escapeHTML(it.name)}<br><span style="color:#6b7480;font-size:12px;">판정: ${it.judgment}</span></td>
-                  <td class="evidence">
-                    ${it.evidence_quote ? `<span class="evidence-quote ${verifyClass(it.verify)}">"${escapeHTML(it.evidence_quote)}"</span>` : '<span style="color:#9ca3af;">발췌 없음</span>'}
-                    <span>${escapeHTML(it.evidence_summary || '')}</span>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
+            <span class="domain-score ${dScoreCls}">${dScore}</span>
+          </summary>
+          ${itemsHTML}
+        </details>`;
     });
 
     block.innerHTML = `
       <h3>${idx+1}. ${escapeHTML(res.paperTitle)}</h3>
       <div class="meta">${escapeHTML(res.fileName)}</div>
       ${designBanner}
-      ${domainsHTML}
+      ${scoreCards}
       <div class="summary-box">
-        <div class="total">최종 종합 평가: <b>${res.overall}</b></div>
-        ${res.domainScores.map(d => `영역 ${d.domain}: <b>${d.score}</b>`).join(' / ')}
+        ${res.domainScores.map(d => `영역 ${d.domain}: <b>${d.score}</b>`).join(' &nbsp;/&nbsp; ')}
       </div>
+      ${domainsHTML}
       <div class="download-row">
         <button class="secondary" data-idx="${idx}" data-action="download-one">📥 이 논문만 엑셀 다운로드</button>
       </div>
@@ -844,16 +1014,10 @@ function renderAllResults() {
 
   resultsEl.querySelectorAll('button[data-action="download-one"]').forEach(btn => {
     btn.addEventListener('click', e => {
-      const idx = parseInt(e.target.dataset.idx);
+      const idx = parseInt(e.currentTarget.dataset.idx);
       downloadExcel([allResults[idx]], 'NUQUEST_' + safeFilename(allResults[idx].paperTitle) + '.xlsx');
     });
   });
-}
-
-function verifyClass(v) {
-  if (v === 'verified' || v === 'na') return '';
-  if (v === 'partial') return 'warn';
-  return 'fail';
 }
 
 document.getElementById('downloadAllBtn').addEventListener('click', () => {
@@ -862,30 +1026,26 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
 });
 
 // =============================================================
-// 엑셀 다운로드 (사용자가 제공한 양식 재현)
+// 엑셀 다운로드
 // =============================================================
 function downloadExcel(results, filename) {
   const wb = XLSX.utils.book_new();
 
-  // 시트 1: Experimental(RCT) — 사용자 양식 재현
+  // 시트 1: Experimental(RCT)
   const aoa = [];
-  // 1~3행 비움 + 헤더 안내
   aoa.push(['']);
   aoa.push(['', '', '', '', '논문 추가 시 아래 부분을 복사하여 오른쪽에 붙여넣기 해서 활용', '', '', '']);
-  aoa.push(['', '', '', '', '해당되는 항목에 숫자 1을 입력', '', '', '평가 근거 내용을 문헌에서 찾아 서술']);
-  // 4행: 논문명 헤더
+  aoa.push(['', '', '', '', '해당되는 항목에 숫자 1을 입력 (아마도 예→예, 아마도 아니오→아니오로 집계)', '', '', '평가 근거 내용을 문헌에서 찾아 서술']);
   const headerRow = ['', '영역', '', '평가항목'];
   results.forEach(r => { headerRow.push(r.paperTitle); headerRow.push(''); headerRow.push(''); headerRow.push('출처'); });
   aoa.push(headerRow);
-  // 5행: 예/아니오/적용되지않음 sub header
   const subHeader = ['', '', '', ''];
   results.forEach(() => { subHeader.push('예'); subHeader.push('아니오'); subHeader.push('적용되지않음'); subHeader.push(''); });
   aoa.push(subHeader);
 
-  // 6~19행: 14개 평가 항목
+  // 14개 평가 항목
   NUQUEST_ITEMS.forEach((def, i) => {
-    const row = ['']; // A열 빈칸
-    // 영역 번호 / 영역명 (각 영역 첫 항목에만)
+    const row = [''];
     if (i === 0) { row.push(1); row.push('연구대상자 선정'); }
     else if (i === 3) { row.push(2); row.push('연구그룹 간 비교 가능성'); }
     else if (i === 8) { row.push(3); row.push('결과 측정'); }
@@ -895,24 +1055,25 @@ function downloadExcel(results, filename) {
 
     results.forEach(r => {
       const it = r.items.find(x => x.item_id === def.id);
-      row.push(it && it.judgment === '예' ? 1 : '');
-      row.push(it && it.judgment === '아니오' ? 1 : '');
-      row.push(it && it.judgment === '적용되지 않음' ? 1 : '');
-      // 출처 (발췌 + 요약)
+      const norm = it ? normalizeJudgment(it.judgment) : '';
+      row.push(norm === '예' ? 1 : '');
+      row.push(norm === '아니오' ? 1 : '');
+      row.push(norm === '적용되지 않음' ? 1 : '');
+      // 출처 (판정 라벨 + 발췌 + 요약)
       const src = it
-        ? (it.evidence_quote ? `"${it.evidence_quote}"\n` : '') + (it.evidence_summary || '')
+        ? `[${it.judgment}] ` + (it.evidence_quote ? `"${it.evidence_quote}"\n` : '') + (it.evidence_summary || '')
         : '';
       row.push(src);
     });
     aoa.push(row);
   });
 
-  // 20행: 영역별 종합평가 헤더
+  // 영역별 종합평가 헤더
   const sumHead = ['', '영역별 종합평가', '', '영역'];
   results.forEach(() => { sumHead.push('우수'); sumHead.push('보통'); sumHead.push('부족'); sumHead.push('메모'); });
   aoa.push(sumHead);
 
-  // 21~24행: 영역별 점수
+  // 영역별 점수
   NUQUEST_DOMAINS.forEach(d => {
     const row = ['', '', '', `${d.num}. ${d.name}`];
     results.forEach(r => {
@@ -925,13 +1086,16 @@ function downloadExcel(results, filename) {
     aoa.push(row);
   });
 
-  // 25행: 전체 종합평가
-  const finalRow = ['', '전체 종합평가', '', ''];
-  results.forEach(r => { finalRow.push(''); finalRow.push(r.overall); finalRow.push(''); finalRow.push(''); });
-  aoa.push(finalRow);
+  // 총점 A
+  const rowA = ['', '최종 총점 A', '', '농산물 특성(영양특화 가중치 ↓)'];
+  results.forEach(r => { rowA.push(''); rowA.push(r.scoreA); rowA.push(''); rowA.push(riskLabel(r.scoreA)); });
+  aoa.push(rowA);
+  // 총점 B
+  const rowB = ['', '최종 총점 B', '', 'NUQUEST 원 기준'];
+  results.forEach(r => { rowB.push(''); rowB.push(r.scoreB); rowB.push(''); rowB.push(riskLabel(r.scoreB)); });
+  aoa.push(rowB);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  // 컬럼 너비 약간 조정
   ws['!cols'] = [{wch:3}, {wch:8}, {wch:18}, {wch:60}];
   for (let i=0; i<results.length; i++) {
     ws['!cols'].push({wch:8}, {wch:8}, {wch:14}, {wch:60});
@@ -940,12 +1104,13 @@ function downloadExcel(results, filename) {
 
   // 시트 2: results 요약
   const sumAoa = [
-    ['논문', '최종 종합 평가', '영역1 (대상자 선정)', '영역2 (비교 가능성)', '영역3 (결과 측정)', '영역4 (영양 특화)'],
+    ['논문', '총점 A (농산물 특성)', '총점 B (NUQUEST 원기준)', '영역1 (대상자 선정)', '영역2 (비교 가능성)', '영역3 (결과 측정)', '영역4 (영양 특화)'],
   ];
   results.forEach(r => {
     sumAoa.push([
       r.paperTitle,
-      r.overall,
+      r.scoreA,
+      r.scoreB,
       r.domainScores.find(x => x.domain === 1).score,
       r.domainScores.find(x => x.domain === 2).score,
       r.domainScores.find(x => x.domain === 3).score,
@@ -953,7 +1118,7 @@ function downloadExcel(results, filename) {
     ]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(sumAoa);
-  ws2['!cols'] = [{wch:50}, {wch:14}, {wch:18}, {wch:18}, {wch:18}, {wch:18}];
+  ws2['!cols'] = [{wch:50}, {wch:18}, {wch:20}, {wch:18}, {wch:18}, {wch:18}, {wch:18}];
   XLSX.utils.book_append_sheet(wb, ws2, 'results');
 
   XLSX.writeFile(wb, filename);
