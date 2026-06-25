@@ -7,8 +7,8 @@
 
 <!-- PDF.js (Mozilla) — PDF 텍스트 추출 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<!-- SheetJS — 엑셀 생성 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- xlsx-js-style (SheetJS 호환 + 셀 스타일) — 엑셀 생성 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -599,6 +599,26 @@ function normalizeJudgment(j) {
 }
 
 // =============================================================
+// 검토자 입력 영속화 (브라우저 localStorage) — 새로고침해도 유지
+// 구조: { [fileName]: { [itemId]: { j: 내판정, n: 메모 } } }
+// =============================================================
+const REVIEW_STORE = 'nuquest_review_v1';
+function loadReviewStore() {
+  try { return JSON.parse(localStorage.getItem(REVIEW_STORE) || '{}'); }
+  catch (e) { return {}; }
+}
+function getReview(fileName, itemId) {
+  const store = loadReviewStore();
+  return (store[fileName] && store[fileName][itemId]) || null;
+}
+function saveReview(fileName, itemId, patch) {
+  const store = loadReviewStore();
+  store[fileName] = store[fileName] || {};
+  store[fileName][itemId] = Object.assign({}, store[fileName][itemId], patch);
+  localStorage.setItem(REVIEW_STORE, JSON.stringify(store));
+}
+
+// =============================================================
 // 시스템 프롬프트 (NUQUEST 평가 지침)
 // =============================================================
 const SYSTEM_PROMPT = `당신은 systematic review 전문가입니다. 제공된 RCT 논문 텍스트에 대해 아래 NUQUEST 14개 항목을 평가하세요.
@@ -927,6 +947,12 @@ evaluateBtn.addEventListener('click', async () => {
         else it.verify = verifyEvidence(it.evidence_quote, pdfText);
       });
 
+      // 검토자 입력 복원 (이전에 같은 파일을 평가했다면)
+      items.forEach(it => {
+        const sv = getReview(entry.file.name, it.item_id);
+        if (sv) { it.userJudgment = sv.j || ''; it.userNote = sv.n || ''; }
+      });
+
       // 점수 계산
       const domainScores = [1,2,3,4].map(d => {
         const dItems = items.filter(it => it.domain === d);
@@ -1112,17 +1138,22 @@ function renderAllResults() {
   }
   resultsEl.querySelectorAll('select.user-judge').forEach(sel => {
     sel.addEventListener('change', e => {
-      const it = findItem(parseInt(e.target.dataset.ri), e.target.dataset.id);
+      const ri = parseInt(e.target.dataset.ri), id = e.target.dataset.id;
+      const it = findItem(ri, id);
       if (!it) return;
       it.userJudgment = e.target.value;
+      saveReview(allResults[ri].fileName, id, { j: e.target.value });
       const flagEl = e.target.parentElement.querySelector('.agree-flag');
       if (flagEl) renderAgreeFlag(flagEl, it.judgment, it.userJudgment);
     });
   });
   resultsEl.querySelectorAll('input.user-note').forEach(inp => {
     inp.addEventListener('input', e => {
-      const it = findItem(parseInt(e.target.dataset.ri), e.target.dataset.id);
-      if (it) it.userNote = e.target.value;
+      const ri = parseInt(e.target.dataset.ri), id = e.target.dataset.id;
+      const it = findItem(ri, id);
+      if (!it) return;
+      it.userNote = e.target.value;
+      saveReview(allResults[ri].fileName, id, { n: e.target.value });
     });
   });
 }
@@ -1145,6 +1176,7 @@ function downloadCriteria() {
   });
   const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
   ws1['!cols'] = [{wch:22}, {wch:6}, {wch:44}, {wch:95}];
+  styleSimpleSheet(ws1);
   XLSX.utils.book_append_sheet(wb, ws1, '항목별 평가 기준');
 
   // 시트 2: 판정 · 점수 산정 기준
@@ -1175,6 +1207,7 @@ function downloadCriteria() {
   ];
   const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
   ws2['!cols'] = [{wch:20}, {wch:95}];
+  styleSimpleSheet(ws2);
   XLSX.utils.book_append_sheet(wb, ws2, '점수 산정 기준');
 
   XLSX.writeFile(wb, 'NUQUEST_평가기준_점수산정기준.xlsx');
@@ -1190,27 +1223,67 @@ function safeSheetName(title, n) {
   return s.slice(0, 31);
 }
 
+// ---- 엑셀 스타일 헬퍼 (xlsx-js-style) ----
+function xbd() { return { style: 'thin', color: { rgb: 'D0D5DD' } }; }
+function xBorder() { return { top: xbd(), bottom: xbd(), left: xbd(), right: xbd() }; }
+function xCell(ws, R, C) {
+  const a = XLSX.utils.encode_cell({ r: R, c: C });
+  return ws[a] || (ws[a] = { t: 's', v: '' });
+}
+function styleTable(ws, r1, c1, r2, c2) {
+  for (let R = r1; R <= r2; R++) for (let C = c1; C <= c2; C++) {
+    const cell = xCell(ws, R, C);
+    cell.s = Object.assign({}, cell.s, {
+      alignment: { wrapText: true, vertical: 'top' },
+      font: { sz: 10 },
+      border: xBorder(),
+    });
+  }
+}
+function styleHeaderRow(ws, R, c1, c2) {
+  for (let C = c1; C <= c2; C++) {
+    xCell(ws, R, C).s = {
+      font: { bold: true, sz: 10, color: { rgb: '1F2933' } },
+      fill: { fgColor: { rgb: 'EAF0FB' } },
+      alignment: { wrapText: true, vertical: 'center', horizontal: 'center' },
+      border: xBorder(),
+    };
+  }
+}
+function styleBold(ws, R, C) {
+  const cell = xCell(ws, R, C);
+  cell.s = Object.assign({}, cell.s, { font: { bold: true, sz: 10 } });
+}
+// 단순 직사각형 시트(헤더 1행 + 데이터): 헤더 강조 + 전체 줄바꿈 + 테두리
+function styleSimpleSheet(ws) {
+  if (!ws['!ref']) return;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let R = range.s.r; R <= range.e.r; R++) for (let C = range.s.c; C <= range.e.c; C++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+    if (!cell) continue;
+    if (R === 0) cell.s = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'EAF0FB' } }, alignment: { wrapText: true, vertical: 'center' }, border: xBorder() };
+    else cell.s = { alignment: { wrapText: true, vertical: 'top' }, font: { sz: 10 }, border: xBorder() };
+  }
+}
+
 function buildPaperSheet(r) {
   const aoa = [];
-  aoa.push(['연구 제목', r.paperTitle]);
+  aoa.push(['연구 제목', r.paperTitle]);                                  // 0
   const dc = r.designCheck || {};
-  aoa.push(['연구 설계', (dc.is_rct === false ? '비RCT 의심 — ' : '') + (dc.design_type || '') + (dc.is_rct === false && dc.exclusion_reason ? ' (' + dc.exclusion_reason + ')' : '')]);
-  aoa.push([]);
+  aoa.push(['연구 설계', (dc.is_rct === false ? '비RCT 의심 — ' : '') + (dc.design_type || '') + (dc.is_rct === false && dc.exclusion_reason ? ' (' + dc.exclusion_reason + ')' : '')]); // 1
+  aoa.push([]);                                                           // 2
+  const hdr = aoa.length;                                                 // 3
   aoa.push(['영역', '평가항목', '예', '아니오', '적용되지않음', '출처 (AI 근거)', '내 판정 (검토자)', '메모 (검토자)']);
 
-  NUQUEST_ITEMS.forEach((def, i) => {
-    let domainCell = '';
-    if (i === 0) domainCell = '1. 연구대상자 선정';
-    else if (i === 3) domainCell = '2. 연구그룹 간 비교 가능성';
-    else if (i === 8) domainCell = '3. 결과 측정';
-    else if (i === 9) domainCell = '4. 영양특화 항목';
+  // 14개 항목 — 영역명을 매 행에 반복(병합 없음 → 정렬·복사·가독성 우수)
+  NUQUEST_ITEMS.forEach(def => {
     const it = r.items.find(x => x.item_id === def.id);
     const norm = it ? normalizeJudgment(it.judgment) : '';
     const src = it
       ? `[${it.judgment}] ` + (it.evidence_quote ? `"${it.evidence_quote}"\n` : '') + (it.evidence_summary || '')
       : '';
     aoa.push([
-      domainCell,
+      `${def.domain}. ${def.domainName}`,
       `${def.id} ${def.name}`,
       norm === '예' ? 1 : '',
       norm === '아니오' ? 1 : '',
@@ -1220,22 +1293,35 @@ function buildPaperSheet(r) {
       it && it.userNote ? it.userNote : '',
     ]);
   });
+  const itemEnd = aoa.length - 1;
 
   // 영역별 종합평가
   aoa.push([]);
+  const domHdr = aoa.length;
   aoa.push(['영역별 종합평가', '', '우수', '보통', '부족']);
   NUQUEST_DOMAINS.forEach(d => {
     const ds = r.domainScores.find(x => x.domain === d.num).score;
     aoa.push([`${d.num}. ${d.name}`, '', ds === '우수' ? 1 : '', ds === '보통' ? 1 : '', ds === '부족' ? 1 : '']);
   });
+  const domEnd = aoa.length - 1;
 
   // 최종 총점 2종
   aoa.push([]);
+  const totA = aoa.length;
   aoa.push(['기관 총점', r.scoreA, riskLabel(r.scoreA), SCORE_A_NOTE]);
   aoa.push(['NUQUEST 총점', r.scoreB, riskLabel(r.scoreB), SCORE_B_NOTE]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [{wch:24}, {wch:46}, {wch:6}, {wch:8}, {wch:12}, {wch:70}, {wch:16}, {wch:44}];
+
+  // 스타일 적용
+  styleTable(ws, hdr, 0, itemEnd, 7);        // 평가표 그리드(헤더 + 14항목)
+  styleHeaderRow(ws, hdr, 0, 7);
+  styleTable(ws, domHdr, 0, domEnd, 4);      // 영역별 종합 그리드
+  styleHeaderRow(ws, domHdr, 0, 4);
+  styleBold(ws, 0, 0); styleBold(ws, 1, 0);  // 제목·설계 라벨
+  styleBold(ws, totA, 0); styleBold(ws, totA + 1, 0); // 총점 라벨
+
   return ws;
 }
 
@@ -1264,6 +1350,7 @@ function downloadExcel(results, filename) {
   });
   const ws2 = XLSX.utils.aoa_to_sheet(sumAoa);
   ws2['!cols'] = [{wch:50}, {wch:18}, {wch:20}, {wch:18}, {wch:18}, {wch:18}, {wch:18}];
+  styleSimpleSheet(ws2);
   XLSX.utils.book_append_sheet(wb, ws2, 'results');
 
   XLSX.writeFile(wb, filename);
