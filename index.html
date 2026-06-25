@@ -1182,85 +1182,72 @@ function downloadCriteria() {
 document.getElementById('downloadCriteriaBtn').addEventListener('click', downloadCriteria);
 
 // =============================================================
-// 엑셀 다운로드
+// 엑셀 다운로드 — 논문당 1시트 + results 요약 시트
 // =============================================================
+function safeSheetName(title, n) {
+  // Excel 시트명: 31자 이내, [ ] : * ? / \ 불가, 번호 접두로 중복 방지
+  const s = (n + '_' + (title || '논문')).replace(/[\[\]:*?\/\\]/g, ' ').trim();
+  return s.slice(0, 31);
+}
+
+function buildPaperSheet(r) {
+  const aoa = [];
+  aoa.push(['연구 제목', r.paperTitle]);
+  const dc = r.designCheck || {};
+  aoa.push(['연구 설계', (dc.is_rct === false ? '비RCT 의심 — ' : '') + (dc.design_type || '') + (dc.is_rct === false && dc.exclusion_reason ? ' (' + dc.exclusion_reason + ')' : '')]);
+  aoa.push([]);
+  aoa.push(['영역', '평가항목', '예', '아니오', '적용되지않음', '출처 (AI 근거)', '내 판정 (검토자)', '메모 (검토자)']);
+
+  NUQUEST_ITEMS.forEach((def, i) => {
+    let domainCell = '';
+    if (i === 0) domainCell = '1. 연구대상자 선정';
+    else if (i === 3) domainCell = '2. 연구그룹 간 비교 가능성';
+    else if (i === 8) domainCell = '3. 결과 측정';
+    else if (i === 9) domainCell = '4. 영양특화 항목';
+    const it = r.items.find(x => x.item_id === def.id);
+    const norm = it ? normalizeJudgment(it.judgment) : '';
+    const src = it
+      ? `[${it.judgment}] ` + (it.evidence_quote ? `"${it.evidence_quote}"\n` : '') + (it.evidence_summary || '')
+      : '';
+    aoa.push([
+      domainCell,
+      `${def.id} ${def.name}`,
+      norm === '예' ? 1 : '',
+      norm === '아니오' ? 1 : '',
+      norm === '적용되지 않음' ? 1 : '',
+      src,
+      it && it.userJudgment ? it.userJudgment : '',
+      it && it.userNote ? it.userNote : '',
+    ]);
+  });
+
+  // 영역별 종합평가
+  aoa.push([]);
+  aoa.push(['영역별 종합평가', '', '우수', '보통', '부족']);
+  NUQUEST_DOMAINS.forEach(d => {
+    const ds = r.domainScores.find(x => x.domain === d.num).score;
+    aoa.push([`${d.num}. ${d.name}`, '', ds === '우수' ? 1 : '', ds === '보통' ? 1 : '', ds === '부족' ? 1 : '']);
+  });
+
+  // 최종 총점 2종
+  aoa.push([]);
+  aoa.push(['기관 총점', r.scoreA, riskLabel(r.scoreA), SCORE_A_NOTE]);
+  aoa.push(['NUQUEST 총점', r.scoreB, riskLabel(r.scoreB), SCORE_B_NOTE]);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:24}, {wch:46}, {wch:6}, {wch:8}, {wch:12}, {wch:70}, {wch:16}, {wch:44}];
+  return ws;
+}
+
 function downloadExcel(results, filename) {
   const wb = XLSX.utils.book_new();
 
-  // 시트 1: Experimental(RCT)
-  const aoa = [];
-  aoa.push(['']);
-  aoa.push(['', '', '', '', '논문 추가 시 아래 부분을 복사하여 오른쪽에 붙여넣기 해서 활용', '', '', '']);
-  aoa.push(['', '', '', '', '해당되는 항목에 숫자 1을 입력 (아마도 예→예, 아마도 아니오→아니오로 집계)', '', '', '평가 근거 내용을 문헌에서 찾아 서술']);
-  const headerRow = ['', '영역', '', '평가항목'];
-  results.forEach(r => { headerRow.push(r.paperTitle); headerRow.push(''); headerRow.push(''); headerRow.push('출처'); headerRow.push('내 판정'); headerRow.push('메모'); });
-  aoa.push(headerRow);
-  const subHeader = ['', '', '', ''];
-  results.forEach(() => { subHeader.push('예'); subHeader.push('아니오'); subHeader.push('적용되지않음'); subHeader.push('(AI 근거)'); subHeader.push('(검토자)'); subHeader.push('(검토자)'); });
-  aoa.push(subHeader);
-
-  // 14개 평가 항목
-  NUQUEST_ITEMS.forEach((def, i) => {
-    const row = [''];
-    if (i === 0) { row.push(1); row.push('연구대상자 선정'); }
-    else if (i === 3) { row.push(2); row.push('연구그룹 간 비교 가능성'); }
-    else if (i === 8) { row.push(3); row.push('결과 측정'); }
-    else if (i === 9) { row.push(4); row.push('4. 영양특화 항목'); }
-    else { row.push(''); row.push(''); }
-    row.push(`${def.id} ${def.name}`);
-
-    results.forEach(r => {
-      const it = r.items.find(x => x.item_id === def.id);
-      const norm = it ? normalizeJudgment(it.judgment) : '';
-      row.push(norm === '예' ? 1 : '');
-      row.push(norm === '아니오' ? 1 : '');
-      row.push(norm === '적용되지 않음' ? 1 : '');
-      // 출처 (판정 라벨 + 발췌 + 요약)
-      const src = it
-        ? `[${it.judgment}] ` + (it.evidence_quote ? `"${it.evidence_quote}"\n` : '') + (it.evidence_summary || '')
-        : '';
-      row.push(src);
-      row.push(it && it.userJudgment ? it.userJudgment : '');  // 내 판정 (검토자)
-      row.push(it && it.userNote ? it.userNote : '');          // 메모 (검토자)
-    });
-    aoa.push(row);
+  // 논문별 시트
+  results.forEach((r, ri) => {
+    XLSX.utils.book_append_sheet(wb, buildPaperSheet(r), safeSheetName(r.paperTitle, ri + 1));
   });
 
-  // 영역별 종합평가 헤더
-  const sumHead = ['', '영역별 종합평가', '', '영역'];
-  results.forEach(() => { sumHead.push('우수'); sumHead.push('보통'); sumHead.push('부족'); sumHead.push('메모'); sumHead.push(''); sumHead.push(''); });
-  aoa.push(sumHead);
-
-  // 영역별 점수
-  NUQUEST_DOMAINS.forEach(d => {
-    const row = ['', '', '', `${d.num}. ${d.name}`];
-    results.forEach(r => {
-      const ds = r.domainScores.find(x => x.domain === d.num).score;
-      row.push(ds === '우수' ? 1 : '');
-      row.push(ds === '보통' ? 1 : '');
-      row.push(ds === '부족' ? 1 : '');
-      row.push(''); row.push(''); row.push('');
-    });
-    aoa.push(row);
-  });
-
-  // 기관 총점
-  const rowA = ['', '기관 총점', '', '농산물 특성(영양특화 가중치 ↓)'];
-  results.forEach(r => { rowA.push(''); rowA.push(r.scoreA); rowA.push(''); rowA.push(riskLabel(r.scoreA)); rowA.push(''); rowA.push(''); });
-  aoa.push(rowA);
-  // NUQUEST 총점
-  const rowB = ['', 'NUQUEST 총점', '', 'NUQUEST 원 기준'];
-  results.forEach(r => { rowB.push(''); rowB.push(r.scoreB); rowB.push(''); rowB.push(riskLabel(r.scoreB)); rowB.push(''); rowB.push(''); });
-  aoa.push(rowB);
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:3}, {wch:8}, {wch:18}, {wch:60}];
-  for (let i=0; i<results.length; i++) {
-    ws['!cols'].push({wch:8}, {wch:8}, {wch:14}, {wch:60}, {wch:12}, {wch:40});
-  }
-  XLSX.utils.book_append_sheet(wb, ws, 'Experimental(RCT)');
-
-  // 시트 2: results 요약
+  // results 요약 시트 (기존 유지)
   const sumAoa = [
     ['논문', '기관 총점 (농산물 특성)', 'NUQUEST 총점 (원 기준)', '영역1 (대상자 선정)', '영역2 (비교 가능성)', '영역3 (결과 측정)', '영역4 (영양 특화)'],
   ];
