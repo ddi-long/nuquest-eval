@@ -425,7 +425,11 @@
   <div class="form-row" style="margin-top:12px;">
     <button id="evaluateBtn" disabled>평가 시작</button>
     <button id="clearAllBtn" class="secondary">전체 삭제</button>
+    <button id="downloadCriteriaBtn" class="secondary">📋 평가·점수 산정 기준 다운로드</button>
   </div>
+  <p class="hint" style="font-size:12px; color:#6b7480; margin:8px 0 0;">
+    각 항목의 판정 기준과 점수 산정 방식을 엑셀로 받아볼 수 있습니다 (평가 없이도 가능).
+  </p>
 </section>
 
 <!-- 3. 진행 상황 -->
@@ -1024,6 +1028,55 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
   if (allResults.length === 0) return;
   downloadExcel(allResults, 'NUQUEST_results_' + dateStamp() + '.xlsx');
 });
+
+// =============================================================
+// 평가 기준 · 점수 산정 기준 다운로드 (참고용, 평가 없이도 가능)
+// =============================================================
+function downloadCriteria() {
+  const wb = XLSX.utils.book_new();
+
+  // 시트 1: 항목별 평가 기준
+  const aoa1 = [['영역', '항목', '평가항목', '판정 기준']];
+  NUQUEST_ITEMS.forEach(def => {
+    aoa1.push([`${def.domain}. ${def.domainName}`, def.id, def.name, def.guide]);
+  });
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+  ws1['!cols'] = [{wch:22}, {wch:6}, {wch:44}, {wch:95}];
+  XLSX.utils.book_append_sheet(wb, ws1, '항목별 평가 기준');
+
+  // 시트 2: 판정 · 점수 산정 기준
+  const aoa2 = [
+    ['구분', '내용'],
+    ['판정 라벨 (화면 표시)', '예 / 아마도 예 / 아마도 아니오 / 아니오 / 적용되지 않음'],
+    ['점수 집계 환산', '아마도 예 → 예, 아마도 아니오 → 아니오 로 환산하여 점수를 계산'],
+    ['', ''],
+    ['◆ 영역 점수', '(적용되지 않음 항목 제외) 평가 항목 기준'],
+    ['   · 우수', '모든 항목이 "예"'],
+    ['   · 부족', '"아니오" 개수가 "예" 개수보다 많음'],
+    ['   · 보통', '그 외 (예 ≥ 아니오 이지만 전부 예는 아님)'],
+    ['', ''],
+    ['◆ 기관 총점', SCORE_A_NOTE],
+    ['   · 우수', '주요 3영역(1·2·3) 모두 우수 + 영양특화(영역4) 보통 이상'],
+    ['   · 보통', '주요 3영역에 부족 없고 보통 1~2개  /  또는 주요 3영역 모두 우수이나 영양특화 부족'],
+    ['   · 부족', '주요 3영역에 부족이 1개라도 있음  /  또는 주요 3영역 모두 보통'],
+    ['', ''],
+    ['◆ NUQUEST 총점', SCORE_B_NOTE],
+    ['   · 우수', '4영역 모두 우수  /  또는 우수 3 + 보통 1'],
+    ['   · 부족', '4영역 모두 부족  /  부족 3+보통 1  /  부족 3+우수 1  /  보통 2+부족 2  /  우수 1+보통 1+부족 2'],
+    ['   · 보통', '위 우수·부족에 해당하지 않는 모든 경우'],
+    ['', ''],
+    ['바이어스 위험도', '우수 = 위험 낮음 / 보통 = 위험 중간 / 부족 = 위험 높음'],
+    ['', ''],
+    ['근거 검증 신호등', '🟢 발췌문 PDF 일치(신뢰) / 🟡 유사 매칭·검토 권장 / 🔴 PDF 미발견(hallucination 의심) / ⚪ 적용 안 됨'],
+    ['적용 대상', 'RCT (parallel-arm, crossover, acute randomized feeding trial). 비무작위·single-arm·observational 제외'],
+  ];
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  ws2['!cols'] = [{wch:20}, {wch:95}];
+  XLSX.utils.book_append_sheet(wb, ws2, '점수 산정 기준');
+
+  XLSX.writeFile(wb, 'NUQUEST_평가기준_점수산정기준.xlsx');
+}
+document.getElementById('downloadCriteriaBtn').addEventListener('click', downloadCriteria);
 
 // =============================================================
 // 엑셀 다운로드
