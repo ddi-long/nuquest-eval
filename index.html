@@ -554,7 +554,7 @@ const NUQUEST_ITEMS = [
     guide:'탈락률 ≤20%(배정 대비 완료 기준) AND 탈락사유 보고 시 "예"; ≤20%지만 사유 미보고 또는 >20% 또는 탈락자수 산출 불가 시 "아니오". 분석대상자수만 제시되는 경우도 있으니 누락 주의' },
   { id:'2.4', domain:2, domainName:'연구그룹 간 비교 가능성',
     name:'모든 대상자는 배정된 그룹에서 분석되었다 (intention-to-treat 분석 적용).',
-    guide:'ITT, modified ITT, full analysis set 명시 또는 배정자수=분석자수면 "예"; PP 분석 명시 또는 배정자수≠분석자수면 "아니오"' },
+    guide:'ITT의 핵심은 결측처리·통계적 보정. "예": ITT / modified ITT / full analysis set 명시, 또는 탈락률 0%(배정자수=분석자수, 결측 없음 → ITT로 간주), 또는 결측에 대한 통계적 보정·대체(imputation, mixed-model 등) 적용. "아니오": per-protocol(PP) 분석만 적용했다고 명시한 경우. "아마도 아니오"(기본값): ITT 분석에 대한 별도 언급이 없는 경우. 탈락자가 있는데 결측처리·통계보정 근거 없이 단순히 "분석에 포함"했다는 서술만 있으면 ITT로 단정하지 말 것 — "분석 포함" 자체는 ITT 통계보정의 근거가 아니므로 "아마도 아니오".' },
   { id:'2.5', domain:2, domainName:'연구그룹 간 비교 가능성',
     name:'연구가 다기관에서 수행된 경우, 모든 기관에서 결과가 비교 가능하였다.',
     guide:'다기관에서 center/site comparability 평가, center effect를 통계모형 반영, 또는 기관 간 결과 차이 없음 제시 시 "예"; 다기관이지만 정보 없음 시 "아니오"; 단일기관이면 "적용되지 않음"' },
