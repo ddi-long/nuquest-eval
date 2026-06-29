@@ -570,7 +570,7 @@ const NUQUEST_ITEMS = [
     guide:'연구 중재 양과 빈도 제시 시 "예"; 양/빈도 미제시 시 "아니오"' },
   { id:'4.2', domain:4, domainName:'영양특화 항목',
     name:'관련된 사전(baseline) 노출이 측정되었으며 고려되었다.',
-    guide:'"예": 보충의 경우 표적성분의 식이 급원 섭취를 고려한 검증된 FFQ·식사기록으로 측정하거나, 바이오마커로 기저 생체이용률(혈중농도 등)을 측정한 경우. (예: 토마토 라이코펜 효과 분석 시 케첩·소스 등 기타 급원을 포함한 검증 DB 기반 설문 또는 혈중 리코펜 측정.) ※ 교차설계에서 개인 간 기저차는 설계상 통제에 유리하나 무조건 "예" 아님. 교차설계 "예" 조건: (1) 각 period 시작 시 노출/바이오마커 측정으로 기저 복귀(적정 wash-out) 확인, (2) 이월(carry-over)·기수·순서 효과 점검, (3) 기간 중 배경 섭취 유지로 반감기 긴 성분의 짧은 washout에 따른 이월효과 해소 — 중 하나 충족. 측정 없이 가정만 했더라도 저자가 충분한 wash-out 기간의 근거를 제시했으면 "예". 단순 지시·제한 안내만으로는 "예" 불가.' },
+    guide:'"예": 보충의 경우 표적성분의 식이 급원 섭취를 고려한 검증된 FFQ·식사기록으로 측정하거나, 바이오마커로 기저 생체이용률(혈중농도 등)을 측정한 경우. (예: 토마토 라이코펜 효과 분석 시 케첩·소스 등 기타 급원을 포함한 검증 DB 기반 설문 또는 혈중 리코펜 측정.) ※ 여기서 "바이오마커"는 연구의 결과(outcome) 측정 지표가 아니라, 영양특화 영역이므로 섭취·노출을 반영하는 표적 영양분·기능성분의 혈중 농도 등(노출 바이오마커)을 의미함. ※ 교차설계에서 개인 간 기저차는 설계상 통제에 유리하나 무조건 "예" 아님. 교차설계 "예" 조건: (1) 각 period 시작 시 노출/바이오마커 측정으로 기저 복귀(적정 wash-out) 확인, (2) 이월(carry-over)·기수·순서 효과 점검, (3) 기간 중 배경 섭취 유지로 반감기 긴 성분의 짧은 washout에 따른 이월효과 해소 — 중 하나 충족. 측정 없이 가정만 했더라도 저자가 충분한 wash-out 기간의 근거를 제시했으면 "예". 단순 지시·제한 안내만으로는 "예" 불가.' },
   { id:'4.3', domain:4, domainName:'영양특화 항목',
     name:'모든 집단의 사전(baseline) 노출이 연구 기간 동안 유지되었다.',
     guide:'(4.2는 "기저 측정/복귀", 4.3은 "연구 기간 중 유지"로 구분.) 중재 관련 식이 유지 여부를 조사하고 정량/통계 결과를 제시하면 "예"; 미실시/미제시 시 "아니오"; 단회섭취 연구는 "적용되지 않음". 단순 지시·제한 안내만으로는 "예" 안 됨.' },
@@ -759,7 +759,9 @@ async function extractPdfText(file) {
 // =============================================================
 // Gemini API 호출
 // =============================================================
-async function callGemini(apiKey, paperText, fileName) {
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function callGemini(apiKey, paperText, fileName, onStatus) {
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey);
   const userPrompt = `[평가 대상 논문: ${fileName}]\n\n${paperText}`;
   const body = {
@@ -770,28 +772,54 @@ async function callGemini(apiKey, paperText, fileName) {
       responseMimeType: 'application/json',
     },
   };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
+
+  const MAX_ATTEMPTS = 5;
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const candidate = data.candidates && data.candidates[0];
+      if (!candidate) throw new Error('Gemini 응답에 candidates가 없음. 입력이 너무 길거나 차단되었을 수 있습니다.');
+      const text = candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text;
+      if (!text) throw new Error('Gemini 응답이 비어있습니다.');
+      let parsed;
+      try { parsed = JSON.parse(text); }
+      catch (e) {
+        const m = text.match(/\{[\s\S]*\}/);
+        if (m) parsed = JSON.parse(m[0]);
+        else throw new Error('Gemini 응답이 유효한 JSON이 아닙니다: ' + text.slice(0,200));
+      }
+      return parsed;
+    }
+
     const errText = await res.text();
-    throw new Error('Gemini API 오류 (' + res.status + '): ' + errText.slice(0,300));
+    // 429(사용량 한도)·503(과부하)은 잠시 대기 후 재시도 (무료 티어 분당 한도 대응)
+    if ((res.status === 429 || res.status === 503) && attempt < MAX_ATTEMPTS) {
+      let waitMs = Math.min(60000, 5000 * Math.pow(2, attempt - 1)); // 5s,10s,20s,40s
+      const ra = res.headers.get('retry-after');
+      if (ra && !isNaN(parseInt(ra))) waitMs = Math.max(waitMs, parseInt(ra) * 1000);
+      const m = errText.match(/"retryDelay"\s*:\s*"(\d+)s"/); // 응답 본문의 권장 대기시간
+      if (m) waitMs = Math.max(waitMs, parseInt(m[1]) * 1000 + 1000);
+      const sec = Math.round(waitMs / 1000);
+      const reason = res.status === 429 ? '사용량 한도 초과' : '서버 과부하';
+      for (let left = sec; left > 0; left--) {
+        if (onStatus) onStatus(`${reason}(${res.status}) — ${left}초 후 재시도 (${attempt}/${MAX_ATTEMPTS - 1})`);
+        await sleep(1000);
+      }
+      continue;
+    }
+
+    let hint = '';
+    if (res.status === 429) hint = ' — 무료 티어 사용량 한도에 도달했습니다. 잠시 후 다시 시도하거나, 한 번에 올리는 PDF 수를 줄여주세요.';
+    throw new Error('Gemini API 오류 (' + res.status + ')' + hint + ': ' + errText.slice(0,200));
   }
-  const data = await res.json();
-  const candidate = data.candidates && data.candidates[0];
-  if (!candidate) throw new Error('Gemini 응답에 candidates가 없음. 입력이 너무 길거나 차단되었을 수 있습니다.');
-  const text = candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text;
-  if (!text) throw new Error('Gemini 응답이 비어있습니다.');
-  let parsed;
-  try { parsed = JSON.parse(text); }
-  catch (e) {
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) parsed = JSON.parse(m[0]);
-    else throw new Error('Gemini 응답이 유효한 JSON이 아닙니다: ' + text.slice(0,200));
-  }
-  return parsed;
 }
 
 // =============================================================
@@ -919,9 +947,14 @@ evaluateBtn.addEventListener('click', async () => {
     const li = document.getElementById('prog_' + entry.id);
     li.innerHTML = `<span class="badge run">진행중</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size" id="step_${entry.id}">PDF 텍스트 추출 중...</span>`;
     try {
+      const stepEl = document.getElementById('step_' + entry.id);
       const pdfText = await extractPdfText(entry.file);
-      document.getElementById('step_' + entry.id).textContent = 'Gemini 평가 요청 중...';
-      const llmResult = await callGemini(apiKey, pdfText, entry.file.name);
+      // 무료 티어 분당 한도 완화: 두 번째 논문부터 요청 간 간격
+      if (i > 0) {
+        for (let left = 4; left > 0; left--) { stepEl.textContent = `다음 요청까지 ${left}초 대기 (분당 한도 보호)...`; await sleep(1000); }
+      }
+      stepEl.textContent = 'Gemini 평가 요청 중...';
+      const llmResult = await callGemini(apiKey, pdfText, entry.file.name, (msg) => { stepEl.textContent = msg; });
 
       // 14개 항목 보정 (LLM이 누락 시 빈 값으로 채움)
       const itemsMap = {};
