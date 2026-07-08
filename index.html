@@ -738,7 +738,7 @@ function addFiles(filelist) {
       alert('최대 5개까지 업로드 가능합니다. 먼저 등록된 파일을 삭제하거나 평가를 진행하세요.');
       break;
     }
-    pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7) });
+    pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7), forcePdf: false });
   }
   renderFileList();
 }
@@ -750,6 +750,9 @@ function renderFileList() {
       <span>📄</span>
       <span class="name">${escapeHTML(entry.file.name)}</span>
       <span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span>
+      <label class="force-pdf-label" style="font-size:12px; color:#4a5260; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="체크 시 PDF 원본을 Gemini가 직접 판독합니다(표·그림 포함). 스캔본은 체크하지 않아도 자동 감지됩니다.">
+        <input type="checkbox" class="force-pdf" data-idx="${idx}" ${entry.forcePdf ? 'checked' : ''}> 원본(표·그림) 판독
+      </label>
       <button class="remove" data-idx="${idx}">삭제</button>
     `;
     fileListEl.appendChild(li);
@@ -758,6 +761,11 @@ function renderFileList() {
     btn.addEventListener('click', e => {
       pendingFiles.splice(parseInt(e.target.dataset.idx), 1);
       renderFileList();
+    });
+  });
+  fileListEl.querySelectorAll('.force-pdf').forEach(cb => {
+    cb.addEventListener('change', e => {
+      pendingFiles[parseInt(e.target.dataset.idx)].forcePdf = e.target.checked;
     });
   });
   evaluateBtn.disabled = pendingFiles.length === 0;
@@ -785,13 +793,38 @@ async function extractPdfText(file) {
 // =============================================================
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// 파일 → base64 (PDF 원본 전송용)
+async function fileToBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+// 텍스트 전송 (디지털 원문 PDF)
 async function callGemini(apiKey, paperText, fileName, onStatus) {
+  const userParts = [{ text: `[평가 대상 논문: ${fileName}]\n\n${paperText}` }];
+  return callGeminiCore(apiKey, userParts, onStatus);
+}
+
+// PDF 원본 전송 (스캔본 OCR / 표·그림 판독)
+async function callGeminiPdf(apiKey, base64, fileName, onStatus) {
+  const userParts = [
+    { text: `[평가 대상 논문(PDF 원본): ${fileName}]\n첨부한 PDF를 직접 읽고(스캔본이면 OCR로 문자 인식하여) 표·그림을 포함해 평가하세요.` },
+    { inlineData: { mimeType: 'application/pdf', data: base64 } },
+  ];
+  return callGeminiCore(apiKey, userParts, onStatus);
+}
+
+async function callGeminiCore(apiKey, userParts, onStatus) {
   const model = getModel();
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
-  const userPrompt = `[평가 대상 논문: ${fileName}]\n\n${paperText}`;
   const body = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    contents: [{ role: 'user', parts: userParts }],
     generationConfig: {
       temperature: 0.1,
       responseMimeType: 'application/json',
@@ -974,12 +1007,26 @@ evaluateBtn.addEventListener('click', async () => {
     try {
       const stepEl = document.getElementById('step_' + entry.id);
       const pdfText = await extractPdfText(entry.file);
+      // 텍스트 레이어가 거의 없으면 스캔본으로 판단
+      const meaningfulLen = pdfText.replace(/\s+/g, '').length;
+      const isScanned = meaningfulLen < 300;
+      const usePdf = entry.forcePdf || isScanned;   // 원본(이미지) 전송 여부
+      const sourceMode = usePdf ? (isScanned ? 'ocr' : 'pdf') : 'text';
+
       // 무료 티어 분당 한도 완화: 두 번째 논문부터 요청 간 간격
       if (i > 0) {
         for (let left = 4; left > 0; left--) { stepEl.textContent = `다음 요청까지 ${left}초 대기 (분당 한도 보호)...`; await sleep(1000); }
       }
-      stepEl.textContent = 'Gemini 평가 요청 중...';
-      const llmResult = await callGemini(apiKey, pdfText, entry.file.name, (msg) => { stepEl.textContent = msg; });
+
+      let llmResult;
+      if (usePdf) {
+        stepEl.textContent = isScanned ? '스캔본 감지 — PDF 원본(OCR)으로 평가 요청 중...' : '원본(표·그림) 판독으로 평가 요청 중...';
+        const base64 = await fileToBase64(entry.file);
+        llmResult = await callGeminiPdf(apiKey, base64, entry.file.name, (msg) => { stepEl.textContent = msg; });
+      } else {
+        stepEl.textContent = 'Gemini 평가 요청 중...';
+        llmResult = await callGemini(apiKey, pdfText, entry.file.name, (msg) => { stepEl.textContent = msg; });
+      }
 
       // 14개 항목 보정 (LLM이 누락 시 빈 값으로 채움)
       const itemsMap = {};
@@ -999,9 +1046,10 @@ evaluateBtn.addEventListener('click', async () => {
         };
       });
 
-      // 발췌 검증
+      // 발췌 검증 (스캔본은 대조할 텍스트 레이어가 없어 생략)
       items.forEach(it => {
         if (normalizeJudgment(it.judgment) === '적용되지 않음') it.verify = 'na';
+        else if (isScanned) it.verify = 'skip';
         else it.verify = verifyEvidence(it.evidence_quote, pdfText);
       });
 
@@ -1029,9 +1077,11 @@ evaluateBtn.addEventListener('click', async () => {
         scoreA,
         scoreB,
         pdfText,
+        sourceMode,
       });
 
-      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">기관: ${scoreA} · NUQUEST: ${scoreB}</span>`;
+      const modeTag = sourceMode === 'ocr' ? ' · 스캔본 OCR' : (sourceMode === 'pdf' ? ' · 원본 판독' : '');
+      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">기관: ${scoreA} · NUQUEST: ${scoreB}${modeTag}</span>`;
     } catch (err) {
       console.error(err);
       li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
@@ -1059,10 +1109,11 @@ function verifyText(verify) {
   if (verify === 'na') return '🟢 발췌 불필요(관련 언급 없음)';
   if (verify === 'partial') return '🟡 유사 매칭 — 검토 권장';
   if (verify === 'unverified') return '🔴 PDF에서 발췌문 미발견 — 검토 필요';
+  if (verify === 'skip') return '⚪ 원문 대조 생략(스캔본 OCR)';
   return '⚪';
 }
 function verifyClass(v) {
-  if (v === 'verified' || v === 'na') return '';
+  if (v === 'verified' || v === 'na' || v === 'skip') return '';
   if (v === 'partial') return 'warn';
   return 'fail';
 }
@@ -1166,9 +1217,13 @@ function renderAllResults() {
         </details>`;
     });
 
+    const modeNote = res.sourceMode === 'ocr'
+      ? '<div class="meta" style="color:#92400e;">🔍 스캔본으로 감지되어 PDF 원본(OCR)으로 평가했습니다. 텍스트 레이어가 없어 근거 검증(신호등)은 생략됩니다 — 발췌 근거를 직접 확인해 주세요.</div>'
+      : (res.sourceMode === 'pdf' ? '<div class="meta" style="color:#1e40af;">🔍 PDF 원본(표·그림 포함)을 직접 판독해 평가했습니다.</div>' : '');
     block.innerHTML = `
       <h3>${idx+1}. ${escapeHTML(res.paperTitle)}</h3>
       <div class="meta">${escapeHTML(res.fileName)}</div>
+      ${modeNote}
       ${designBanner}
       ${scoreCards}
       <div class="summary-box">
