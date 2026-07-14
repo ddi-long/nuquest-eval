@@ -637,7 +637,11 @@ const SYSTEM_PROMPT = `당신은 systematic review 전문가입니다. 제공된
 2. 각 14개 항목에 대해 "예" / "아마도 예" / "아마도 아니오" / "아니오" / "적용되지 않음" 중 하나로 판단. 근거가 명확하면 "예" 또는 "아니오", 근거가 부분적이거나 약하지만 방향성이 있으면 "아마도 예" 또는 "아마도 아니오"로 표기. ("확인불가"나 "판단 보류" 같은 회피 표기는 사용하지 말 것 — 반드시 위 5개 중 하나로 판단.)
 3. 근거(evidence_quote)는 반드시 논문에 실제로 적힌 문장을 그대로 발췌. 임의 요약 문장 금지. 관련 언급이 전혀 없으면 빈 문자열.
 4. 각 항목별로 evidence_summary는 평가 기준에 따른 판단 근거 요약 서술. 판정이 "아마도 예/아마도 아니오"이면 왜 단정하지 못했는지(검토 필요 사유)를 함께 적을 것.
-5. [매우 중요] 먼저 연구가 "단회섭취(급성)"인지 "지속섭취"인지 판단하여 design_check.intake_type에 기록하라. 단회섭취 = 1회 섭취 후 식후(postprandial) 반응을 몇 시간 내에 측정하는 급성 설계(교차설계에서 각 시험일 1회 투여 포함). 이 판단은 논문 전체에 대해 한 번만 내리고, 4.3과 4.5 두 항목에 일관되게 적용하라 — intake_type이 "single-dose"이면 4.3과 4.5는 반드시 둘 다 "적용되지 않음"으로 판정하고, 각 항목의 예/아니오 세부 로직은 적용하지 말 것. (4.2는 단회섭취여도 "적용되지 않음"이 아님 — 4.2는 별도 판단.)
+5. [매우 중요 — 섭취유형(단회 vs 지속) 판단] 먼저 연구의 섭취유형을 판단해 design_check.intake_type에 기록하라. 판단 기준은 "효과(결과)를 측정하는 시점이 시험 중재를 1회 섭취한 직후(식후)인가, 아니면 여러 날 반복 섭취한 이후인가"이다.
+   - "single-dose"(단회섭취·급성): 시험 중재(시험식품/보충제)를 1회 섭취한 뒤 그 반응을 몇 시간 이내에 측정하는 설계. 신호어: acute, postprandial, single dose/serving/bolus, "섭취(intake/consumption) 후 1/2/3/6 h에 측정", "test day/visit(각 방문일에 1회 섭취)". 교차설계에서 각 시험일마다 1회씩 투여하고 그날 식후 반응을 측정하면 이것도 single-dose이다.
+     ★★ 오분류 주의: (a) 시험일 사이의 washout 기간, (b) 시험 전 며칠간의 식이 제한·표준화(예: "3 d before each test day low-polyphenol diet"), (c) 여러 용량을 각각 다른 시험일에 시험(dose-response) — 이것들은 모두 "지속 섭취 기간"이 아니며 single-dose 판단을 바꾸지 않는다. 결과 측정이 1회 섭취 후 식후 시점이면 무조건 single-dose.
+   - "repeated"(지속섭취): 시험 중재를 수일~수주 이상 매일(정기적) 섭취한 뒤 그 기간 효과를 측정하는 설계. 신호어: "daily for N weeks", "supplemented for N days", "8주간 매일 섭취", "after N weeks of intervention".
+   이 판단은 논문 전체에 대해 한 번만 내리고 4.3·4.5에 일관 적용 — intake_type="single-dose"이면 4.3과 4.5는 반드시 둘 다 "적용되지 않음"(각 항목의 예/아니오 세부 로직 적용 금지). (4.2는 단회섭취여도 "적용되지 않음"이 아님 — 별도 판단.)
 
 [항목별 평가 지침]
 ${NUQUEST_ITEMS.map(it => `${it.id} ${it.name}\n   → ${it.guide}`).join('\n')}
@@ -1047,6 +1051,19 @@ evaluateBtn.addEventListener('click', async () => {
           evidence_summary: got.evidence_summary || '불명확하여 검토 필요',
         };
       });
+
+      // 단회섭취(급성) 연구면 4.3·4.5는 '적용되지 않음'으로 고정 (일관성 하드 가드)
+      const intakeType = (llmResult.design_check || {}).intake_type;
+      if (intakeType === 'single-dose') {
+        items.forEach(it => {
+          if (it.item_id === '4.3' || it.item_id === '4.5') {
+            if (it.judgment !== '적용되지 않음') {
+              it.evidence_summary = '[단회섭취(급성) 연구로 자동 "적용되지 않음" 처리] (원 판정: ' + it.judgment + ') ' + (it.evidence_summary || '');
+            }
+            it.judgment = '적용되지 않음';
+          }
+        });
+      }
 
       // 발췌 검증 (스캔본은 대조할 텍스트 레이어가 없어 생략)
       items.forEach(it => {
