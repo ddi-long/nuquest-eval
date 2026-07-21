@@ -484,6 +484,10 @@
     <p class="hint">한 번에 5개까지 업로드 가능 · parallel-arm / crossover / acute RCT 대상</p>
     <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none">
   </div>
+  <div id="fileListControls" class="form-row" style="display:none; margin-top:12px; align-items:center;">
+    <button id="toggleAllPdfBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">원본 판독 전체 해제</button>
+    <span class="status" style="margin:0; align-self:center;">체크 시 Gemini가 PDF 원본을 직접 판독합니다(표·그림 포함). <b>기본 선택</b>되어 있습니다.</span>
+  </div>
   <ul id="fileList" class="file-list"></ul>
   <div class="form-row" style="margin-top:12px;">
     <button id="evaluateBtn" disabled>평가 시작</button>
@@ -744,7 +748,7 @@ function addFiles(filelist) {
       alert('최대 5개까지 업로드 가능합니다. 먼저 등록된 파일을 삭제하거나 평가를 진행하세요.');
       break;
     }
-    pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7), forcePdf: false });
+    pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7), forcePdf: true });
   }
   renderFileList();
 }
@@ -772,10 +776,28 @@ function renderFileList() {
   fileListEl.querySelectorAll('.force-pdf').forEach(cb => {
     cb.addEventListener('change', e => {
       pendingFiles[parseInt(e.target.dataset.idx)].forcePdf = e.target.checked;
+      updateToggleAllLabel();
     });
   });
+  fileListControls.style.display = pendingFiles.length > 0 ? 'flex' : 'none';
+  updateToggleAllLabel();
   evaluateBtn.disabled = pendingFiles.length === 0;
 }
+
+// 원본 판독 전체 선택 / 전체 해제
+const fileListControls = document.getElementById('fileListControls');
+const toggleAllPdfBtn = document.getElementById('toggleAllPdfBtn');
+function allForcePdfChecked() {
+  return pendingFiles.length > 0 && pendingFiles.every(e => e.forcePdf);
+}
+function updateToggleAllLabel() {
+  toggleAllPdfBtn.textContent = allForcePdfChecked() ? '원본 판독 전체 해제' : '원본 판독 전체 선택';
+}
+toggleAllPdfBtn.addEventListener('click', () => {
+  const turnOff = allForcePdfChecked();
+  pendingFiles.forEach(e => { e.forcePdf = !turnOff; });
+  renderFileList();
+});
 clearAllBtn.addEventListener('click', () => { pendingFiles = []; renderFileList(); });
 
 // =============================================================
@@ -1016,7 +1038,9 @@ evaluateBtn.addEventListener('click', async () => {
       // 텍스트 레이어가 거의 없으면 스캔본으로 판단
       const meaningfulLen = pdfText.replace(/\s+/g, '').length;
       const isScanned = meaningfulLen < 300;
-      const usePdf = entry.forcePdf || isScanned;   // 원본(이미지) 전송 여부
+      // 원본(이미지) 전송 여부. 인라인 전송 한도(약 20MB)를 넘는 대용량 PDF는 텍스트 경로로 대체
+      const tooLargeForInline = entry.file.size > 18 * 1024 * 1024;
+      const usePdf = isScanned || (entry.forcePdf && !tooLargeForInline);
       const sourceMode = usePdf ? (isScanned ? 'ocr' : 'pdf') : 'text';
 
       // 무료 티어 분당 한도 완화: 두 번째 논문부터 요청 간 간격
