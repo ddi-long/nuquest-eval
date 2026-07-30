@@ -455,6 +455,19 @@
   .grade-Moderate { background: #dbeafe; color: #1e40af; }
   .grade-Low { background: #fef3c7; color: #92400e; }
   .grade-Verylow { background: #fee2e2; color: #991b1b; }
+
+  /* ===== 모달(상세 보기) ===== */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+  .modal-box { background: #fff; border-radius: 10px; max-width: 760px; width: 100%; max-height: 86vh; overflow: auto; box-shadow: 0 12px 44px rgba(0,0,0,0.25); }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #e1e5eb; position: sticky; top: 0; background: #fff; }
+  .modal-head h2 { margin: 0; font-size: 17px; }
+  .modal-close { background: transparent; border: none; color: #6b7480; font-size: 18px; cursor: pointer; padding: 4px 8px; }
+  .modal-body { padding: 18px 20px; font-size: 13.5px; line-height: 1.6; color: #1f2933; }
+  .modal-body h3 { font-size: 14px; margin: 16px 0 6px; color: #1f4e79; }
+  .modal-body table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+  .modal-body th, .modal-body td { border: 1px solid #e1e5eb; padding: 7px 10px; vertical-align: top; text-align: left; }
+  .modal-body th { background: #eaf0fb; white-space: nowrap; }
+  .modal-foot { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid #e1e5eb; justify-content: flex-end; position: sticky; bottom: 0; background: #fff; }
 </style>
 </head>
 <body>
@@ -580,6 +593,7 @@
     <div class="form-row" style="margin-top:12px;">
       <button id="gEvaluateBtn" disabled>평가 시작</button>
       <button id="gClearBtn" class="secondary">전체 삭제</button>
+      <button id="gShowCriteriaBtn" class="secondary">📋 GRADE 평가 기준 보기</button>
     </div>
     <p class="hint" style="font-size:12px; color:#6b7480; margin:8px 0 0;">
       논문이 GRADE를 이미 보고한 경우 그 등급을 사용하고(출처: 저자), 보고하지 않은 경우 내부 기준으로 산출합니다(출처: 기관).
@@ -613,6 +627,43 @@
     </div>
     <div id="gResults"></div>
   </section>
+
+  <!-- GRADE 평가 기준 모달 -->
+  <div id="gCriteriaModal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>근거확실성(GRADE) 평가 기준</h2>
+        <button id="gCriteriaClose" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p><b>시작 등급:</b> High (RCT 기반 SR/MA) — 아래 5개 영역의 <b>강등 수</b>로 최종 등급을 산정합니다.</p>
+        <h3>강등 판정 (5개 영역)</h3>
+        <table>
+          <tr><th>영역</th><th>규칙</th></tr>
+          <tr><td>비뚤림위험</td><td>SR이 개별 연구의 비뚤림위험을 평가하고, 질이 부족한 연구를 <b>제외</b>했거나 포함했더라도 <b>적절히 보정</b> → 유지 / 그 외 <b>강등</b></td></tr>
+          <tr><td>비일관성</td><td><b>I² ≥ 50%</b> → 강등 (I² 미보고 시 유지) · <i>도구 자동 계산</i></td></tr>
+          <tr><td>비직접성</td><td>연구질문에 해당하는 적절한 지표이며 적절한 대상자 대상 → 유지 / 그 외 <b>강등</b>. 아시아인·아시아산 농산물이면 각주 표시</td></tr>
+          <tr><td>비정밀성</td><td>대상자수 <b>n&lt;100 AND 비유의 → 강등</b> (n≥100 또는 유의하면 유지) · <i>도구 자동 계산</i></td></tr>
+          <tr><td>출판비뚤림</td><td>심하면 강등 / 그 외 <b>판단불가</b>(미집계)</td></tr>
+        </table>
+        <h3>최종 등급 산정</h3>
+        <table>
+          <tr><th>강등 수</th><th>최종 등급</th></tr>
+          <tr><td>0</td><td>1등급 High ★★★★</td></tr>
+          <tr><td>1</td><td>2등급 Moderate ★★★☆</td></tr>
+          <tr><td>2</td><td>3등급 Low ★★☆☆</td></tr>
+          <tr><td>3 이상</td><td>4등급 Very low ★☆☆☆</td></tr>
+        </table>
+        <h3>참고</h3>
+        <p>· 논문(저자)이 GRADE를 <b>이미 보고</b>한 경우 그 등급을 채택합니다(출처=저자). 도구의 기관 산출값은 비고에 함께 표시됩니다.<br>
+        · 비일관성·비정밀성은 도구가 I²·n·유의성으로 <b>자동 계산</b>하고, 나머지 영역은 AI 판정 후 검토자가 확인합니다.</p>
+      </div>
+      <div class="modal-foot">
+        <button id="gCriteriaDownload">📥 기준 엑셀 다운로드</button>
+        <button id="gCriteriaCloseBtn" class="secondary">닫기</button>
+      </div>
+    </div>
+  </div>
 
 </div><!-- /mode-grade -->
 
@@ -1990,6 +2041,45 @@ function downloadGradeExcel() {
   if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws);
   XLSX.utils.book_append_sheet(wb, ws, '근거확실성 평가(GRADE)');
   XLSX.writeFile(wb, 'GRADE_평가결과_' + dateStamp() + '.xlsx');
+}
+
+// GRADE 평가 기준 모달 + 기준 엑셀
+const gCriteriaModal = document.getElementById('gCriteriaModal');
+function openGCriteria() { gCriteriaModal.style.display = 'flex'; }
+function closeGCriteria() { gCriteriaModal.style.display = 'none'; }
+document.getElementById('gShowCriteriaBtn').addEventListener('click', openGCriteria);
+document.getElementById('gCriteriaClose').addEventListener('click', closeGCriteria);
+document.getElementById('gCriteriaCloseBtn').addEventListener('click', closeGCriteria);
+gCriteriaModal.addEventListener('click', e => { if (e.target === gCriteriaModal) closeGCriteria(); });
+document.getElementById('gCriteriaDownload').addEventListener('click', downloadGradeCriteria);
+function downloadGradeCriteria() {
+  const wb = XLSX.utils.book_new();
+  const aoa = [
+    ['근거확실성(GRADE) 평가 기준', ''],
+    ['시작 등급', 'High (RCT 기반 SR/MA). 아래 5개 영역의 강등 수로 최종 등급 산정.'],
+    ['', ''],
+    ['◆ 강등 판정 (5개 영역)', ''],
+    ['비뚤림위험', 'SR이 개별 연구의 비뚤림위험을 평가하고, 질이 부족한 연구를 제외했거나 포함했더라도 적절히 보정 → 유지 / 그 외 강등'],
+    ['비일관성', 'I² ≥ 50% → 강등 (I² 미보고 시 유지). [도구 자동 계산]'],
+    ['비직접성', '연구질문에 해당하는 적절한 지표이며 적절한 대상자 대상 → 유지 / 그 외 강등. 아시아인·아시아산 농산물이면 각주 표시'],
+    ['비정밀성', '대상자수 n<100 AND 비유의 → 강등 / n≥100 또는 유의하면 유지. [도구 자동 계산]'],
+    ['출판비뚤림', '심하면 강등 / 그 외 판단불가(미집계)'],
+    ['', ''],
+    ['◆ 최종 등급 산정 (강등 수)', ''],
+    ['강등 0', '1등급 High ★★★★'],
+    ['강등 1', '2등급 Moderate ★★★☆'],
+    ['강등 2', '3등급 Low ★★☆☆'],
+    ['강등 3 이상', '4등급 Very low ★☆☆☆'],
+    ['', ''],
+    ['◆ 참고', ''],
+    ['저자 GRADE 보고 시', '저자가 보고한 등급을 채택(출처=저자), 도구의 기관 산출값은 비고에 병기'],
+    ['자동 계산', '비일관성(I²)·비정밀성(n·유의성)은 도구가 자동 계산, 나머지는 AI 판정 후 검토자 확인'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:22}, {wch:88}];
+  if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws);
+  XLSX.utils.book_append_sheet(wb, ws, 'GRADE 평가 기준');
+  XLSX.writeFile(wb, 'GRADE_평가기준.xlsx');
 }
 
 // evidence_review_LIT 입력셀 엑셀 (claims + grade_markers 시트)
