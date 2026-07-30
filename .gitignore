@@ -4,3 +4,5 @@ _*.txt
 .claude/
 
 *.xlsx
+*.docx
+GRADE/

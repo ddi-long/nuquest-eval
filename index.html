@@ -430,6 +430,31 @@
     font-size: 12.5px;
     color: #4a5260;
   }
+
+  /* ===== 탭 전환 ===== */
+  .tabbar { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid #d6dbe1; }
+  .tab-btn {
+    background: #fff; color: #6b7480; border: 1px solid #e1e5eb; border-bottom: none;
+    border-radius: 8px 8px 0 0; padding: 10px 18px; font-weight: 600; font-size: 14px;
+    font-family: inherit; cursor: pointer; margin-bottom: -1px;
+  }
+  .tab-btn:hover { background: #f8f9fb; }
+  .tab-btn.active { color: #2563eb; border-color: #d6dbe1; background: #eff6ff; }
+
+  /* ===== GRADE 결과 표 ===== */
+  .grade-table-wrap { overflow-x: auto; }
+  table.grade-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 900px; }
+  table.grade-table th, table.grade-table td { border: 1px solid #e1e5eb; padding: 6px 8px; vertical-align: top; text-align: left; }
+  table.grade-table th { background: #eaf0fb; font-weight: 700; white-space: nowrap; }
+  table.grade-table td.c { text-align: center; white-space: nowrap; }
+  .dg-강등 { color: #b42318; font-weight: 700; }
+  .dg-유지 { color: #027a48; }
+  .dg-판단불가 { color: #98a2b3; }
+  .grade-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 700; white-space: nowrap; }
+  .grade-High { background: #d1fae5; color: #065f46; }
+  .grade-Moderate { background: #dbeafe; color: #1e40af; }
+  .grade-Low { background: #fef3c7; color: #92400e; }
+  .grade-Verylow { background: #fee2e2; color: #991b1b; }
 </style>
 </head>
 <body>
@@ -475,6 +500,14 @@
     </div>
   </details>
 </section>
+
+<!-- 탭 전환 -->
+<div class="tabbar">
+  <button class="tab-btn active" data-mode="nuquest">① NUQUEST (개별 RCT 평가)</button>
+  <button class="tab-btn" data-mode="grade">② 근거확실성 평가 (GRADE)</button>
+</div>
+
+<div id="mode-nuquest">
 
 <!-- 2. PDF 업로드 -->
 <section class="card">
@@ -530,6 +563,54 @@
   </div>
   <div id="results"></div>
 </section>
+
+</div><!-- /mode-nuquest -->
+
+<div id="mode-grade" style="display:none;">
+
+  <!-- G2. SR/UR 업로드 -->
+  <section class="card">
+    <h2>② SR·UR 논문 PDF 업로드 (최대 5개)</h2>
+    <div id="g-dropzone" class="dropzone">
+      <p>📄 SR·UR·메타분석 PDF를 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
+      <p class="hint">체계적 문헌고찰(SR) / 엄브렐라리뷰(UR) / 메타분석(MA) 대상 · 논문의 결과지표별로 GRADE 근거확실성을 산출</p>
+      <input type="file" id="g-fileInput" accept="application/pdf" multiple style="display:none">
+    </div>
+    <ul id="g-fileList" class="file-list"></ul>
+    <div class="form-row" style="margin-top:12px;">
+      <button id="gEvaluateBtn" disabled>평가 시작</button>
+      <button id="gClearBtn" class="secondary">전체 삭제</button>
+    </div>
+    <p class="hint" style="font-size:12px; color:#6b7480; margin:8px 0 0;">
+      논문이 GRADE를 이미 보고한 경우 그 등급을 사용하고(출처: 저자), 보고하지 않은 경우 내부 기준으로 산출합니다(출처: 기관).
+    </p>
+  </section>
+
+  <!-- G3. 진행 상황 -->
+  <section class="card" id="gProgressCard" style="display:none;">
+    <h2>③ 진행 상황</h2>
+    <ul id="gProgressList" class="progress-list"></ul>
+  </section>
+
+  <!-- G4. 결과 -->
+  <section id="gResultsSection" style="display:none;">
+    <div class="card">
+      <h2>④ 근거확실성(GRADE) 평가 결과</h2>
+      <div class="legend">
+        <span><b>강등:</b></span>
+        <span class="dg-강등">강등</span>
+        <span class="dg-유지">유지</span>
+        <span class="dg-판단불가">판단불가(미집계)</span>
+        <span>· 강등 0→High / 1→Moderate / 2→Low / 3+→Very low</span>
+      </div>
+      <div class="download-row">
+        <button id="gDownloadBtn">📥 GRADE 평가 결과 엑셀 다운로드</button>
+      </div>
+    </div>
+    <div id="gResults"></div>
+  </section>
+
+</div><!-- /mode-grade -->
 
 </div>
 
@@ -847,11 +928,11 @@ async function callGeminiPdf(apiKey, base64, fileName, onStatus) {
   return callGeminiCore(apiKey, userParts, onStatus);
 }
 
-async function callGeminiCore(apiKey, userParts, onStatus) {
+async function callGeminiCore(apiKey, userParts, onStatus, systemPrompt) {
   const model = getModel();
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
   const body = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    systemInstruction: { parts: [{ text: systemPrompt || SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts: userParts }],
     generationConfig: {
       temperature: 0.1,
@@ -1526,6 +1607,295 @@ function safeFilename(s) {
 function dateStamp() {
   const d = new Date();
   return d.getFullYear().toString().slice(2) + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
+}
+
+// =============================================================
+// 탭 전환 (NUQUEST / GRADE)
+// =============================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mode = btn.dataset.mode;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('mode-nuquest').style.display = (mode === 'nuquest') ? '' : 'none';
+    document.getElementById('mode-grade').style.display = (mode === 'grade') ? '' : 'none';
+  });
+});
+
+// =============================================================
+// 근거확실성 평가(GRADE) — 시스템 프롬프트
+// =============================================================
+const GRADE_SYSTEM_PROMPT = `당신은 근거확실성(GRADE) 평가 전문가입니다. 제공된 논문은 체계적 문헌고찰(SR)·엄브렐라리뷰(UR)·메타분석(MA)입니다. 논문이 다룬 각 결과지표(outcome)별로 정보를 추출하고 GRADE 강등 여부를 판정하세요.
+
+[기본 원칙]
+- 논문이 SR/UR/MA가 아니면 is_review=false로 표시.
+- 결과지표(outcome/marker)별로 한 행씩 만든다 (예: SBP, DBP, LDL-C 각각 별도 행).
+- 각 지표에서 아래를 추출:
+  · functional: 효능 영역(예: 혈압, 혈중지질, 눈건강)
+  · marker: 지표명, 한글 병기 (예: "LDL-C (LDL 콜레스테롤)")
+  · included_designs: 포함 연구설계 (예: RCT)
+  · n_studies: 해당 지표 메타분석 포함 논문 편수(숫자)
+  · n_participants: 해당 지표 총 참여자 수(숫자, 불명이면 null)
+  · i2: 이질성 I² 값(숫자 %, 없거나 미보고면 null)
+  · significance: 통합효과의 통계적 유의성 — "significant" / "not_significant" / "inconsistent" / "narrative_only"
+  · asian: 대상자가 아시아인이거나 아시아산 농산물을 사용했으면 true, 아니면 false. asian_note에 근거.
+  · author_grade: 저자(논문)가 이 지표에 GRADE/certainty of evidence 등급을 직접 보고했으면 그 값("High"/"Moderate"/"Low"/"Very low"), 없으면 null.
+
+[강등 판정 — 우리 기준]
+- risk_of_bias(비뚤림위험): SR이 개별 연구의 비뚤림위험을 평가했고, 질이 부족한 연구를 제외했거나 포함했더라도 적절히 보정했으면 "유지"; 그 외 "강등".
+- indirectness(비직접성): 연구질문에 해당하는 적절한 지표이며 적절한 대상자를 대상으로 한 연구를 포함했으면 "유지"; 그 외 "강등".
+- publication_bias(출판비뚤림): 출판비뚤림이 심하다고 보고되면 "강등"; 그 외 "판단불가".
+- 비일관성·비정밀성은 도구가 i2·n_participants·significance로 자동 계산하므로 판정하지 않아도 되나, 근거를 inconsistency_reason·imprecision_reason에 서술.
+
+[출력 형식] 다른 설명·마크다운·주석 없이 JSON만 출력:
+{
+  "is_review": true,
+  "review_type": "UR+MA" | "SR+MA" | "MA" | "UR" | "SR" | "기타",
+  "paper": "제1저자 등 (연도)",
+  "outcomes": [
+    {
+      "functional": "혈압",
+      "marker": "SBP (수축기혈압)",
+      "included_designs": "RCT",
+      "n_studies": 15,
+      "n_participants": 1234,
+      "i2": 45,
+      "significance": "significant",
+      "asian": false,
+      "asian_note": "",
+      "author_grade": "Moderate",
+      "risk_of_bias": { "judgment": "유지", "reason": "..." },
+      "indirectness": { "judgment": "유지", "reason": "..." },
+      "publication_bias": { "judgment": "판단불가", "reason": "..." },
+      "inconsistency_reason": "I² 45%",
+      "imprecision_reason": "n=1234, 유의"
+    }
+  ]
+}`;
+
+// =============================================================
+// GRADE 등급 계산 (도구 — 결정적)
+// =============================================================
+const GRADE_LEVELS = ['High', 'Moderate', 'Low', 'Very low'];
+const GRADE_TIER = ['1등급', '2등급', '3등급', '4등급'];
+const GRADE_STARS = ['★★★★', '★★★☆', '★★☆☆', '★☆☆☆'];
+function gradeByDowngrades(down) {
+  const i = Math.min(Math.max(down, 0), 3);
+  return { grade: GRADE_LEVELS[i], tier: GRADE_TIER[i], stars: GRADE_STARS[i] };
+}
+function computeOutcomeGrade(o) {
+  // 비일관성: I² ≥ 50 → 강등, I² 있으나 <50 → 유지, 미보고 → 유지(미집계 근거)
+  let inconsistency;
+  if (o.i2 != null && !isNaN(Number(o.i2))) inconsistency = (Number(o.i2) >= 50) ? '강등' : '유지';
+  else inconsistency = '유지';
+  // 비정밀성: n<100 AND 비유의 → 강등, 그 외 유지 (n 불명이면 유지)
+  let imprecision;
+  if (o.n_participants != null && !isNaN(Number(o.n_participants))) {
+    imprecision = (Number(o.n_participants) < 100 && o.significance !== 'significant') ? '강등' : '유지';
+  } else imprecision = '유지';
+  const rob = (o.risk_of_bias && o.risk_of_bias.judgment) || '판단불가';
+  const ind = (o.indirectness && o.indirectness.judgment) || '판단불가';
+  const pub = (o.publication_bias && o.publication_bias.judgment) || '판단불가';
+  const domains = { 비뚤림위험: rob, 비일관성: inconsistency, 비직접성: ind, 비정밀성: imprecision, 출판비뚤림: pub };
+  let down = 0;
+  Object.values(domains).forEach(v => { if (v === '강등') down++; });
+  const computed = gradeByDowngrades(down);
+  // 저자 GRADE가 있으면 그것을 최종으로 채택
+  let source = '기관', finalGrade = computed;
+  if (o.author_grade && GRADE_LEVELS.includes(o.author_grade)) {
+    finalGrade = gradeByDowngrades(GRADE_LEVELS.indexOf(o.author_grade));
+    source = '저자';
+  }
+  return { domains, down, computed, finalGrade, source };
+}
+function gradeAbbr(grade) {
+  return { 'High': 'H', 'Moderate': 'M', 'Low': 'L', 'Very low': 'VL' }[grade] || '';
+}
+
+// =============================================================
+// GRADE 파일 업로드 관리
+// =============================================================
+let gPendingFiles = [];
+const gDropzone = document.getElementById('g-dropzone');
+const gFileInput = document.getElementById('g-fileInput');
+const gFileListEl = document.getElementById('g-fileList');
+const gEvaluateBtn = document.getElementById('gEvaluateBtn');
+const gClearBtn = document.getElementById('gClearBtn');
+
+gDropzone.addEventListener('click', () => gFileInput.click());
+gDropzone.addEventListener('dragover', e => { e.preventDefault(); gDropzone.classList.add('hover'); });
+gDropzone.addEventListener('dragleave', () => gDropzone.classList.remove('hover'));
+gDropzone.addEventListener('drop', e => { e.preventDefault(); gDropzone.classList.remove('hover'); gAddFiles(e.dataTransfer.files); });
+gFileInput.addEventListener('change', e => gAddFiles(e.target.files));
+
+function gAddFiles(filelist) {
+  const arr = Array.from(filelist).filter(f => f.type === 'application/pdf');
+  if (arr.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
+  for (const f of arr) {
+    if (gPendingFiles.length >= 5) { alert('최대 5개까지 업로드 가능합니다.'); break; }
+    gPendingFiles.push({ file: f, id: 'g' + Date.now() + '_' + Math.random().toString(36).slice(2,7) });
+  }
+  gRenderFileList();
+}
+function gRenderFileList() {
+  gFileListEl.innerHTML = '';
+  gPendingFiles.forEach((entry, idx) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>📄</span><span class="name">${escapeHTML(entry.file.name)}</span><span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span><button class="remove" data-idx="${idx}">삭제</button>`;
+    gFileListEl.appendChild(li);
+  });
+  gFileListEl.querySelectorAll('.remove').forEach(btn => {
+    btn.addEventListener('click', e => { gPendingFiles.splice(parseInt(e.target.dataset.idx), 1); gRenderFileList(); });
+  });
+  gEvaluateBtn.disabled = gPendingFiles.length === 0;
+}
+gClearBtn.addEventListener('click', () => { gPendingFiles = []; gRenderFileList(); });
+
+// =============================================================
+// GRADE 평가 파이프라인
+// =============================================================
+const gProgressCard = document.getElementById('gProgressCard');
+const gProgressList = document.getElementById('gProgressList');
+const gResultsSection = document.getElementById('gResultsSection');
+const gResultsEl = document.getElementById('gResults');
+let gAllRows = []; // 평탄화된 결과 행 (지표별)
+
+gEvaluateBtn.addEventListener('click', async () => {
+  const apiKey = localStorage.getItem(KEY_STORAGE);
+  if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return; }
+  if (gPendingFiles.length === 0) return;
+
+  gEvaluateBtn.disabled = true; gClearBtn.disabled = true;
+  gProgressCard.style.display = 'block';
+  gResultsSection.style.display = 'none';
+  gResultsEl.innerHTML = ''; gProgressList.innerHTML = '';
+  gAllRows = [];
+
+  const targets = gPendingFiles.slice();
+  targets.forEach((entry, idx) => {
+    const li = document.createElement('li');
+    li.id = 'gprog_' + entry.id;
+    li.innerHTML = `<span class="badge wait">대기</span><span>${idx+1}. ${escapeHTML(entry.file.name)}</span>`;
+    gProgressList.appendChild(li);
+  });
+
+  for (let i = 0; i < targets.length; i++) {
+    const entry = targets[i];
+    const li = document.getElementById('gprog_' + entry.id);
+    const setStep = (msg) => { const s = document.getElementById('gstep_' + entry.id); if (s) s.textContent = msg; };
+    li.innerHTML = `<span class="badge run">진행중</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size" id="gstep_${entry.id}">PDF 처리 중...</span>`;
+    try {
+      const pdfText = await extractPdfText(entry.file);
+      const isScanned = pdfText.replace(/\s+/g, '').length < 300;
+      if (i > 0) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
+      setStep('Gemini GRADE 평가 요청 중...');
+      let userParts;
+      if (isScanned) {
+        const b64 = await fileToBase64(entry.file);
+        userParts = [{ text: `[SR/UR 논문(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고(스캔본이면 OCR) 평가하세요.` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
+      } else {
+        userParts = [{ text: `[SR/UR 논문: ${entry.file.name}]\n\n${pdfText}` }];
+      }
+      const res = await callGeminiCore(apiKey, userParts, setStep, GRADE_SYSTEM_PROMPT);
+
+      if (res.is_review === false) {
+        li.innerHTML = `<span class="badge fail">제외</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">SR/UR/MA가 아닌 것으로 판단됨</span>`;
+        continue;
+      }
+      const outcomes = res.outcomes || [];
+      outcomes.forEach(o => {
+        const g = computeOutcomeGrade(o);
+        gAllRows.push({ paper: res.paper || deriveTitle(entry.file.name), reviewType: res.review_type || '', o, g });
+      });
+      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${outcomes.length}개</span>`;
+    } catch (err) {
+      console.error(err);
+      li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
+    }
+  }
+
+  gEvaluateBtn.disabled = false; gClearBtn.disabled = false;
+  if (gAllRows.length > 0) { gResultsSection.style.display = 'block'; renderGradeResults(); }
+});
+
+// =============================================================
+// GRADE 결과 렌더링
+// =============================================================
+function dgClass(v) { return 'dg-' + (v === '강등' ? '강등' : (v === '유지' ? '유지' : '판단불가')); }
+function gradeRemark(row) {
+  const o = row.o, g = row.g;
+  const parts = [];
+  if (g.source === '저자') parts.push('저자 GRADE 채택(기관 산출: ' + g.computed.grade + ')');
+  else parts.push('기관 산출(강등 ' + g.down + ')');
+  if (o.asian) parts.push('아시아인/아시아산 — 각주 대상');
+  const dr = [];
+  if (g.domains.비뚤림위험 === '강등' && o.risk_of_bias && o.risk_of_bias.reason) dr.push('RoB: ' + o.risk_of_bias.reason);
+  if (g.domains.비직접성 === '강등' && o.indirectness && o.indirectness.reason) dr.push('비직접성: ' + o.indirectness.reason);
+  if (g.domains.출판비뚤림 === '강등' && o.publication_bias && o.publication_bias.reason) dr.push('출판비뚤림: ' + o.publication_bias.reason);
+  return parts.concat(dr).join(' / ');
+}
+function renderGradeResults() {
+  const cols = ['논문','기능성','시험항목','근거','비뚤림위험','비일관성','비직접성','비정밀성','출판비뚤림','최종 등급','I²','n수','아시아','유의성','GRADE 출처','비고'];
+  let html = '<div class="result-block"><div class="grade-table-wrap"><table class="grade-table"><thead><tr>';
+  cols.forEach(c => html += `<th>${c}</th>`);
+  html += '</tr></thead><tbody>';
+  gAllRows.forEach(row => {
+    const o = row.o, g = row.g, d = g.domains;
+    const gr = g.finalGrade.grade.replace(/\s/g, '');
+    html += '<tr>'
+      + `<td>${escapeHTML(row.paper)}</td>`
+      + `<td>${escapeHTML(o.functional || '')}</td>`
+      + `<td>${escapeHTML(o.marker || '')}</td>`
+      + `<td>${escapeHTML((o.included_designs || '') + (o.n_studies ? ' ' + o.n_studies + '편' : ''))}</td>`
+      + `<td class="c ${dgClass(d.비뚤림위험)}">${d.비뚤림위험}</td>`
+      + `<td class="c ${dgClass(d.비일관성)}">${d.비일관성}</td>`
+      + `<td class="c ${dgClass(d.비직접성)}">${d.비직접성}</td>`
+      + `<td class="c ${dgClass(d.비정밀성)}">${d.비정밀성}</td>`
+      + `<td class="c ${dgClass(d.출판비뚤림)}">${d.출판비뚤림}</td>`
+      + `<td class="c"><span class="grade-pill grade-${gr}">${g.finalGrade.tier} ${g.finalGrade.stars}</span><br><span style="font-size:11px;color:#6b7480;">${g.finalGrade.grade}</span></td>`
+      + `<td class="c">${o.i2 != null ? o.i2 + '%' : '-'}</td>`
+      + `<td class="c">${o.n_participants != null ? o.n_participants : '-'}</td>`
+      + `<td class="c">${o.asian ? 'O' : 'X'}</td>`
+      + `<td class="c">${escapeHTML(sigLabel(o.significance))}</td>`
+      + `<td class="c">${g.source}</td>`
+      + `<td>${escapeHTML(gradeRemark(row))}</td>`
+      + '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  gResultsEl.innerHTML = html;
+}
+function sigLabel(s) {
+  return { significant: '유의', not_significant: '비유의', inconsistent: '불일치', narrative_only: '서술만' }[s] || (s || '');
+}
+
+document.getElementById('gDownloadBtn').addEventListener('click', () => {
+  if (gAllRows.length === 0) return;
+  downloadGradeExcel();
+});
+
+// =============================================================
+// GRADE 엑셀 (기능성명 스타일)
+// =============================================================
+function downloadGradeExcel() {
+  const wb = XLSX.utils.book_new();
+  const header = ['논문','기능성','시험항목','근거','비뚤림위험','비일관성','비직접성','비정밀성','출판비뚤림','최종 등급','등급(약어)','I²','n수','아시아 포함','유의성','GRADE 출처','비고'];
+  const aoa = [header];
+  gAllRows.forEach(row => {
+    const o = row.o, g = row.g, d = g.domains;
+    aoa.push([
+      row.paper, o.functional || '', o.marker || '',
+      (o.included_designs || '') + (o.n_studies ? ' ' + o.n_studies + '편' : ''),
+      d.비뚤림위험, d.비일관성, d.비직접성, d.비정밀성, d.출판비뚤림,
+      g.finalGrade.tier + ' ' + g.finalGrade.stars + ' (' + g.finalGrade.grade + ')',
+      gradeAbbr(g.finalGrade.grade),
+      o.i2 != null ? o.i2 : '', o.n_participants != null ? o.n_participants : '',
+      o.asian ? 'O' : 'X', sigLabel(o.significance), g.source, gradeRemark(row)
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:22},{wch:12},{wch:22},{wch:14},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:22},{wch:8},{wch:7},{wch:8},{wch:9},{wch:9},{wch:10},{wch:50}];
+  if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws);
+  XLSX.utils.book_append_sheet(wb, ws, '근거확실성 평가(GRADE)');
+  XLSX.writeFile(wb, 'GRADE_평가결과_' + dateStamp() + '.xlsx');
 }
 </script>
 </body>
