@@ -605,7 +605,11 @@
       </div>
       <div class="download-row">
         <button id="gDownloadBtn">📥 GRADE 평가 결과 엑셀 다운로드</button>
+        <button id="gDownloadEvidenceBtn" class="secondary">📥 evidence_review 입력셀 엑셀</button>
       </div>
+      <p class="hint" style="font-size:12px; color:#6b7480; margin:8px 0 0;">
+        표에서 <b>claim_id</b>와 <b>hc_code</b>를 확인·수정한 뒤 'evidence_review 입력셀 엑셀'을 받으면 claims·grade_markers 시트로 출력됩니다.
+      </p>
     </div>
     <div id="gResults"></div>
   </section>
@@ -1711,6 +1715,86 @@ function gradeAbbr(grade) {
   return { 'High': 'H', 'Moderate': 'M', 'Low': 'L', 'Very low': 'VL' }[grade] || '';
 }
 
+// ---- evidence_review 연계용: hc_codes 목록 + 추천/헬퍼 ----
+const HC_CODES = [
+  {code:'hc1a-cognition', item:'인지기능', desc:'노화로 저하된 인지기능 개선'},
+  {code:'hc1b-memory', item:'기억력', desc:'기억력 개선'},
+  {code:'hc2-tension', item:'긴장', desc:'스트레스로 인한 긴장 완화'},
+  {code:'hc3-sleep', item:'수면의 질', desc:'수면의 질 개선'},
+  {code:'hc4-fatigue', item:'피로', desc:'스트레스로 인한 피로개선'},
+  {code:'hc5-teeth', item:'치아', desc:'치아 건강(일반)'},
+  {code:'hc5-antipathogen', item:'치아', desc:'구강에서의 항균작용'},
+  {code:'hc5-cavities', item:'치아', desc:'충치 발생 위험 감소'},
+  {code:'hc6-gum', item:'잇몸', desc:'잇몸건강'},
+  {code:'hc7-breath', item:'구취', desc:'구강 내 세균증식을 억제하여 구취완화'},
+  {code:'hc8-eye', item:'눈', desc:'눈 건강(일반)'},
+  {code:'hc8-macula', item:'눈', desc:'노화로 감소될 수 있는 황반색소밀도 유지'},
+  {code:'hc8-fatigue', item:'눈', desc:'눈의 피로도 개선'},
+  {code:'hc8-dryness', item:'눈', desc:'건조한 눈 개선'},
+  {code:'hc9-hearing', item:'청력', desc:'노화로 감소될 수 있는 청력 유지'},
+  {code:'hc10-skin', item:'피부', desc:'피부 건강(일반)'},
+  {code:'hc10-uv', item:'피부', desc:'자외선으로 인한 피부 손상으로부터 피부 건강 유지'},
+  {code:'hc10-moisture', item:'피부', desc:'피부보습'},
+  {code:'hc11-hair', item:'모발', desc:'모발상태(윤기·탄력) 개선'},
+  {code:'hc12-liver', item:'간', desc:'간 보호(일반)'},
+  {code:'hc12-alcohol', item:'간', desc:'알코올 손상으로부터 간을 보호'},
+  {code:'hc13-stomach', item:'위', desc:'위 점막 보호하여 위 건강(일반)'},
+  {code:'hc13-digestion', item:'위', desc:'담즙분비를 촉진하여 지방소화'},
+  {code:'hc14-intestine', item:'장', desc:'장 건강(일반)'},
+  {code:'hc14-flora', item:'장', desc:'장 내 유익균 증식 및 유해균 억제'},
+  {code:'hc14-bowel', item:'장', desc:'배변 활동 원활'},
+  {code:'hc14-comfort', item:'장', desc:'장 불편감 완화'},
+  {code:'hc15-bodyfat', item:'체지방', desc:'체지방 감소'},
+  {code:'hc16-calcium', item:'칼슘흡수', desc:'체내 칼슘 흡수 촉진'},
+  {code:'hc17-bloodsugar', item:'혈당', desc:'혈당 건강(일반)'},
+  {code:'hc17-postprandial', item:'혈당', desc:'식후 혈당 상승 억제'},
+  {code:'hc17-glycemic', item:'혈당', desc:'혈당조절'},
+  {code:'hc18-menopause-f', item:'갱년기 여성', desc:'갱년기 여성의 건강'},
+  {code:'hc19-menopause-m', item:'갱년기 남성', desc:'갱년기 남성의 건강'},
+  {code:'hc20-pms', item:'월경 전 불편한 상태', desc:'월경 전 변화에 의한 불편한 상태 개선'},
+  {code:'hc21-triglyceride', item:'혈중 중성지방', desc:'혈중 중성지방 개선'},
+  {code:'hc22-cholesterol', item:'콜레스테롤', desc:'혈중 콜레스테롤 개선'},
+  {code:'hc23-bp', item:'혈압', desc:'혈압 조절'},
+  {code:'hc24-circulation', item:'혈행', desc:'혈행 개선(일반)'},
+  {code:'hc24-antithrombotic', item:'혈행', desc:'혈소판 응집을 억제하여 혈행 개선'},
+  {code:'hc25-bronchi', item:'기관·기관지', desc:'기관·기관지 상태(기침·가래 등) 개선'},
+  {code:'hc26-legswelling', item:'다리불편감(부기)', desc:'장시간 서 있는 성인에서 다리의 불편감(부기)완화'},
+  {code:'hc27-immune', item:'면역', desc:'면역기능 증진'},
+  {code:'hc28-allergy', item:'과민면역', desc:'면역과민반응 개선(일반)'},
+  {code:'hc28-nasal', item:'과민면역', desc:'면역과민반응에 의한 코 상태 개선'},
+  {code:'hc28-skin', item:'과민면역', desc:'면역과민반응에 의한 피부상태 개선'},
+  {code:'hc29-antioxidant', item:'항산화', desc:'항산화'},
+  {code:'hc30a-bone', item:'뼈', desc:'뼈 건강'},
+  {code:'hc30b-joint', item:'관절', desc:'관절 건강'},
+  {code:'hc31-muscle', item:'근육', desc:'근육 건강(일반)'},
+  {code:'hc31-strength', item:'근육', desc:'노화로 감소될 수 있는 근력 유지'},
+  {code:'hc31-function', item:'근육', desc:'노화로 감소될 수 있는 근기능 유지'},
+  {code:'hc32-performance', item:'운동수행능력', desc:'운동수행능력 향상(지구력 증진)'},
+  {code:'hc33-height', item:'어린이 키성장', desc:'어린이 키 성장'},
+  {code:'hc34-urinary', item:'요로', desc:'요로의 유해균 흡착 억제로 요로건강'},
+  {code:'hc35-urination', item:'배뇨', desc:'방광의 배뇨기능 개선'},
+  {code:'hc36-prostate', item:'전립선', desc:'전립선 건강의 유지'},
+  {code:'hc37-uremic', item:'요독물질', desc:'콩팥에서 요독 물질 배출'},
+  {code:'etc', item:'기타', desc:'37개 식약처 기능성에 해당하지 않음'},
+];
+function suggestHcCode(functional, marker) {
+  const t = (functional || '') + ' ' + (marker || '');
+  const hit = HC_CODES.find(h => h.item && h.item !== '기타' && t.indexOf(h.item) !== -1);
+  return hit ? hit.code : '';
+}
+function hcOptionsHtml(selected) {
+  const opts = ['<option value="">(선택)</option>'];
+  HC_CODES.forEach(h => opts.push(`<option value="${h.code}"${h.code === selected ? ' selected' : ''}>${h.code} · ${escapeHTML(h.item)}</option>`));
+  return opts.join('');
+}
+function suggestClaimId(paper) {
+  if (!paper) return '';
+  const ym = paper.match(/(?:19|20)\d{2}/);
+  const year = ym ? ym[0] : '';
+  const first = (paper.trim().split(/[\s,\.]+/)[0] || '').replace(/[^A-Za-z가-힣]/g, '');
+  return first + year;
+}
+
 // =============================================================
 // GRADE 파일 업로드 관리
 // =============================================================
@@ -1802,9 +1886,11 @@ gEvaluateBtn.addEventListener('click', async () => {
         continue;
       }
       const outcomes = res.outcomes || [];
+      const paperName = res.paper || deriveTitle(entry.file.name);
       outcomes.forEach(o => {
         const g = computeOutcomeGrade(o);
-        gAllRows.push({ paper: res.paper || deriveTitle(entry.file.name), reviewType: res.review_type || '', o, g });
+        gAllRows.push({ paper: paperName, reviewType: res.review_type || '', o, g,
+          claimId: suggestClaimId(paperName), hcCode: suggestHcCode(o.functional, o.marker) });
       });
       li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${outcomes.length}개</span>`;
     } catch (err) {
@@ -1834,11 +1920,11 @@ function gradeRemark(row) {
   return parts.concat(dr).join(' / ');
 }
 function renderGradeResults() {
-  const cols = ['논문','기능성','시험항목','근거','비뚤림위험','비일관성','비직접성','비정밀성','출판비뚤림','최종 등급','I²','n수','아시아','유의성','GRADE 출처','비고'];
+  const cols = ['논문','기능성','시험항목','근거','비뚤림위험','비일관성','비직접성','비정밀성','출판비뚤림','최종 등급','I²','n수','아시아','유의성','GRADE 출처','비고','claim_id','hc_code'];
   let html = '<div class="result-block"><div class="grade-table-wrap"><table class="grade-table"><thead><tr>';
   cols.forEach(c => html += `<th>${c}</th>`);
   html += '</tr></thead><tbody>';
-  gAllRows.forEach(row => {
+  gAllRows.forEach((row, i) => {
     const o = row.o, g = row.g, d = g.domains;
     const gr = g.finalGrade.grade.replace(/\s/g, '');
     html += '<tr>'
@@ -1858,10 +1944,18 @@ function renderGradeResults() {
       + `<td class="c">${escapeHTML(sigLabel(o.significance))}</td>`
       + `<td class="c">${g.source}</td>`
       + `<td>${escapeHTML(gradeRemark(row))}</td>`
+      + `<td><input class="g-claimid" data-idx="${i}" value="${escapeHTML(row.claimId || '')}" style="width:110px; padding:4px 6px; border:1px solid #c8cdd4; border-radius:5px; font-size:12px; font-family:inherit;"></td>`
+      + `<td><select class="g-hccode" data-idx="${i}" style="padding:4px 6px; border:1px solid #c8cdd4; border-radius:5px; font-size:12px; font-family:inherit; max-width:170px;">${hcOptionsHtml(row.hcCode || '')}</select></td>`
       + '</tr>';
   });
   html += '</tbody></table></div></div>';
   gResultsEl.innerHTML = html;
+  gResultsEl.querySelectorAll('.g-claimid').forEach(inp => {
+    inp.addEventListener('input', e => { gAllRows[parseInt(e.target.dataset.idx)].claimId = e.target.value; });
+  });
+  gResultsEl.querySelectorAll('.g-hccode').forEach(sel => {
+    sel.addEventListener('change', e => { gAllRows[parseInt(e.target.dataset.idx)].hcCode = e.target.value; });
+  });
 }
 function sigLabel(s) {
   return { significant: '유의', not_significant: '비유의', inconsistent: '불일치', narrative_only: '서술만' }[s] || (s || '');
@@ -1896,6 +1990,57 @@ function downloadGradeExcel() {
   if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws);
   XLSX.utils.book_append_sheet(wb, ws, '근거확실성 평가(GRADE)');
   XLSX.writeFile(wb, 'GRADE_평가결과_' + dateStamp() + '.xlsx');
+}
+
+// evidence_review_LIT 입력셀 엑셀 (claims + grade_markers 시트)
+document.getElementById('gDownloadEvidenceBtn').addEventListener('click', () => {
+  if (gAllRows.length === 0) return;
+  downloadEvidenceExcel();
+});
+function downloadEvidenceExcel() {
+  const wb = XLSX.utils.book_new();
+  // claims 시트 — claim_id별 1행 (대표값: 해당 claim_id 첫 행)
+  const claimsAoa = [['claim_id', 'included_study_designs', 'n_studies', 'n_participants']];
+  const seen = {};
+  gAllRows.forEach(r => {
+    const id = (r.claimId || '').trim();
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    const first = gAllRows.find(x => (x.claimId || '').trim() === id);
+    claimsAoa.push([
+      id,
+      first.o.included_designs || '',
+      first.o.n_studies != null ? first.o.n_studies : '',
+      first.o.n_participants != null ? first.o.n_participants : ''
+    ]);
+  });
+  const ws1 = XLSX.utils.aoa_to_sheet(claimsAoa);
+  ws1['!cols'] = [{wch:16}, {wch:24}, {wch:10}, {wch:14}];
+  if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws1);
+  XLSX.utils.book_append_sheet(wb, ws1, 'claims');
+
+  // grade_markers 시트 — 지표별 1행
+  const gmAoa = [['claim_id', 'marker', 'grade', 'significance', 'display_order', 'hc_code', 'grade_source']];
+  const order = {};
+  gAllRows.forEach(r => {
+    const id = (r.claimId || '').trim();
+    order[id] = (order[id] || 0) + 1;
+    gmAoa.push([
+      id,
+      r.o.marker || '',
+      r.g.finalGrade.grade,
+      r.o.significance || '',
+      order[id],
+      r.hcCode || '',
+      r.g.source === '저자' ? 'author' : 'institution'
+    ]);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(gmAoa);
+  ws2['!cols'] = [{wch:16}, {wch:26}, {wch:12}, {wch:16}, {wch:12}, {wch:20}, {wch:12}];
+  if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws2);
+  XLSX.utils.book_append_sheet(wb, ws2, 'grade_markers');
+
+  XLSX.writeFile(wb, 'evidence_review_입력셀_' + dateStamp() + '.xlsx');
 }
 </script>
 </body>
