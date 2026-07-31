@@ -682,7 +682,14 @@
       <input type="file" id="m-fileInput" accept="application/pdf" multiple style="display:none">
     </div>
     <ul id="m-fileList" class="file-list"></ul>
-    <div class="form-row" style="margin-top:12px;">
+    <div class="form-row" style="margin-top:12px; align-items:center;">
+      <label for="mTargetInput" style="font-size:13px; color:#4a5260; align-self:center; white-space:nowrap;">목표 지표 (선택)</label>
+      <input type="text" id="mTargetInput" placeholder="예: contrast sensitivity, LDL — 쉼표로 구분" style="flex:1; min-width:200px; padding:8px 12px; border:1px solid #c8cdd4; border-radius:6px; font-size:14px; font-family:inherit;">
+    </div>
+    <p class="hint" style="font-size:12px; color:#6b7480; margin:4px 0 10px;">
+      지정하면 논문마다 다른 이름(예: MCS = mesopic contrast sensitivity)을 <b>이 지표로 통일</b>해 우선 추출합니다. 비우면 모든 지표를 추출합니다.
+    </p>
+    <div class="form-row">
       <button id="mEvaluateBtn" disabled>추출 시작</button>
       <button id="mClearBtn" class="secondary">파일 목록 비우기</button>
       <button id="mResetBtn" class="danger">누적 결과 초기화</button>
@@ -2202,7 +2209,9 @@ const EXTRACT_SYSTEM_PROMPT = `당신은 메타분석 데이터 추출 전문가
   · change score 계산·SD 변환은 하지 말 것(R에서 계산).
 - 한 논문이 여러 지표를 측정하면 지표마다 별도 comparison.
 - [arm 분리 규칙 — 매우 중요] 한 논문 안에서 용량(예: 10·25·50 mg)이 다르거나 섭취 형태(예: juice·capsule)가 다른 중재군은 각각 **별도 comparison으로 분리**하고, arm_label에 구분값(예: "50mg", "juice")을 넣으세요. 이들은 메타분석에서 **별개의 연구로 취급**됩니다. (단일 arm이면 arm_label은 빈 문자열)
-- [시점 규칙] 여러 시점(time point)을 측정한 경우 **최종(마지막) 시점의 값만** 사용하세요.
+- [별도 시험 분리] 한 논문에 서로 다른 **별도 시험**(예: 단기시험과 장기시험, 서로 다른 코호트·기간의 트라이얼, 표가 나뉘어 보고된 경우)이 있으면 각각 **별개 study로 분리**하고 arm_label에 구분(예: "short-term","long-term","S2","L1")을 넣으세요.
+- [시점 규칙] 하나의 연속된 시험 안에서 여러 시점을 측정한 경우 **최종(마지막) 시점 값만** 사용. (단, 위 '별도 시험'은 각각 유지)
+- [표·그림 판독] 데이터가 표(Table)나 그림에 있으면 행·열을 정확히 매칭해 각 군의 값을 추출하세요. 값과 함께 SD가 아닌 **SEM만 보고**되면 before_se·after_se(또는 change 값의 se가 있으면 그대로)에 넣고 SD로 변환하지 마세요.
 
 [출력] 다른 설명 없이 JSON만:
 {
@@ -2277,6 +2286,7 @@ mEvaluateBtn.addEventListener('click', async () => {
   if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return; }
   if (mPendingFiles.length === 0) return;
 
+  const mTargets = (document.getElementById('mTargetInput').value || '').trim();
   mEvaluateBtn.disabled = true; mClearBtn.disabled = true;
   mProgressCard.style.display = 'block';
   mProgressList.innerHTML = '';
@@ -2295,16 +2305,20 @@ mEvaluateBtn.addEventListener('click', async () => {
     const setStep = (msg) => { const s = document.getElementById('mstep_' + entry.id); if (s) s.textContent = msg; };
     li.innerHTML = `<span class="badge run">진행중</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size" id="mstep_${entry.id}">PDF 처리 중...</span>`;
     try {
-      const pdfText = await extractPdfText(entry.file);
-      const isScanned = pdfText.replace(/\s+/g, '').length < 300;
       if (i > 0) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
-      setStep('Gemini 데이터 추출 요청 중...');
+      const targetLine = mTargets
+        ? `\n[목표 지표] 특히 다음 지표(들)의 데이터를 우선 추출하고, 논문에서 다른 이름(예: MCS = mesopic contrast sensitivity)으로 불려도 이 목표 지표로 매핑하여 variable에 목표 지표명으로 통일하세요: ${mTargets}. (목표 지표 외 다른 지표도 함께 추출)`
+        : '';
+      // 데이터가 표·그림에 있으므로 PDF 원본을 직접 판독(대용량만 텍스트 대체)
       let userParts;
-      if (isScanned) {
-        const b64 = await fileToBase64(entry.file);
-        userParts = [{ text: `[개별 RCT(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고(스캔본이면 OCR) 데이터를 추출하세요.` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
+      if (entry.file.size > 18 * 1024 * 1024) {
+        setStep('대용량 PDF — 텍스트로 추출 요청 중...');
+        const pdfText = await extractPdfText(entry.file);
+        userParts = [{ text: `[개별 RCT: ${entry.file.name}]${targetLine}\n\n${pdfText}` }];
       } else {
-        userParts = [{ text: `[개별 RCT: ${entry.file.name}]\n\n${pdfText}` }];
+        setStep('PDF 원본 판독으로 데이터 추출 중...');
+        const b64 = await fileToBase64(entry.file);
+        userParts = [{ text: `[개별 RCT(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고 표·그림을 포함해(스캔본이면 OCR) 데이터를 추출하세요.${targetLine}` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
       }
       const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
       const comps = res.comparisons || [];
@@ -2323,7 +2337,11 @@ mEvaluateBtn.addEventListener('click', async () => {
           t: cmp.treatment || {}, c: cmp.control || {}
         });
       });
-      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${comps.length}개 추출</span>`;
+      if (comps.length === 0) {
+        li.innerHTML = `<span class="badge fail">지표 0</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">추출된 지표 없음 — 데이터가 표/그림에 있거나 형식이 복잡할 수 있습니다. 다시 시도하거나 목표 지표를 지정해 보세요.</span>`;
+      } else {
+        li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${comps.length}개 추출</span>`;
+      }
     } catch (err) {
       console.error(err);
       li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
