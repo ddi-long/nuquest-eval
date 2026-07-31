@@ -9,6 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- xlsx-js-style (SheetJS 호환 + 셀 스타일) — 엑셀 생성 -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<!-- mammoth — Word(.docx) 보충자료 텍스트 추출 -->
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -680,6 +682,7 @@
       <p>📄 개별 RCT PDF를 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
       <p class="hint">지표별 메타분석 원자료(data_B) 추출 · 여러 번 나눠 올려도 결과가 <b>누적</b>됩니다</p>
       <input type="file" id="m-fileInput" accept="application/pdf" multiple style="display:none">
+      <input type="file" id="m-suppInput" accept="application/pdf,.docx" multiple style="display:none">
     </div>
     <ul id="m-fileList" class="file-list"></ul>
     <div class="form-row" style="margin-top:12px; align-items:center;">
@@ -2254,21 +2257,65 @@ function mAddFiles(filelist) {
   if (arr.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
   for (const f of arr) {
     if (mPendingFiles.length >= 30) { alert('최대 30편까지 업로드 가능합니다. (여러 번 나눠 올려도 결과는 누적됩니다)'); break; }
-    mPendingFiles.push({ file: f, id: 'm' + Date.now() + '_' + Math.random().toString(36).slice(2,7) });
+    mPendingFiles.push({ file: f, id: 'm' + Date.now() + '_' + Math.random().toString(36).slice(2,7), supplements: [] });
   }
   mRenderFileList();
 }
+let mSuppTargetIdx = -1;
 function mRenderFileList() {
   mFileListEl.innerHTML = '';
   mPendingFiles.forEach((entry, idx) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span>📄</span><span class="name">${escapeHTML(entry.file.name)}</span><span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span><button class="remove" data-idx="${idx}">삭제</button>`;
+    li.style.flexDirection = 'column'; li.style.alignItems = 'stretch';
+    const suppHtml = (entry.supplements || []).map((s, si) =>
+      `<div style="display:flex; align-items:center; gap:6px; margin-left:26px; margin-top:4px; font-size:12.5px; color:#4a5260;">📎 ${escapeHTML(s.file.name)}<button class="m-rm-supp" data-idx="${idx}" data-sidx="${si}" style="border:none;background:transparent;color:#b42318;cursor:pointer;padding:0 4px;">✕</button></div>`
+    ).join('');
+    li.innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span>📄</span><span class="name" style="flex:1;">${escapeHTML(entry.file.name)}</span>
+        <span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span>
+        <button class="m-add-supp secondary" data-idx="${idx}" style="font-size:12px; padding:4px 9px;">＋보충자료</button>
+        <button class="remove" data-idx="${idx}">삭제</button>
+      </div>${suppHtml}`;
     mFileListEl.appendChild(li);
   });
   mFileListEl.querySelectorAll('.remove').forEach(btn => {
-    btn.addEventListener('click', e => { mPendingFiles.splice(parseInt(e.target.dataset.idx), 1); mRenderFileList(); });
+    btn.addEventListener('click', e => { mPendingFiles.splice(parseInt(e.currentTarget.dataset.idx), 1); mRenderFileList(); });
+  });
+  mFileListEl.querySelectorAll('.m-add-supp').forEach(btn => {
+    btn.addEventListener('click', e => { mSuppTargetIdx = parseInt(e.currentTarget.dataset.idx); document.getElementById('m-suppInput').click(); });
+  });
+  mFileListEl.querySelectorAll('.m-rm-supp').forEach(btn => {
+    btn.addEventListener('click', e => { mPendingFiles[+e.currentTarget.dataset.idx].supplements.splice(+e.currentTarget.dataset.sidx, 1); mRenderFileList(); });
   });
   mEvaluateBtn.disabled = mPendingFiles.length === 0;
+}
+document.getElementById('m-suppInput').addEventListener('change', e => {
+  if (mSuppTargetIdx < 0 || !mPendingFiles[mSuppTargetIdx]) return;
+  const arr = Array.from(e.target.files).filter(f => /\.(pdf|docx)$/i.test(f.name));
+  if (arr.length === 0) alert('보충자료는 PDF 또는 Word(.docx)만 지원합니다.');
+  arr.forEach(f => mPendingFiles[mSuppTargetIdx].supplements.push({ file: f, id: 'ms' + Date.now() + Math.random().toString(36).slice(2,5) }));
+  e.target.value = '';
+  mRenderFileList();
+});
+// 본문 + 보충자료(PDF 직접·docx 텍스트추출)를 한 요청 parts로 구성
+async function buildSupplementParts(supps) {
+  const parts = [];
+  for (const s of (supps || [])) {
+    const nm = s.file.name.toLowerCase();
+    if (nm.endsWith('.pdf')) {
+      const b64 = await fileToBase64(s.file);
+      parts.push({ text: `\n[보충자료 PDF: ${s.file.name}]` });
+      parts.push({ inlineData: { mimeType: 'application/pdf', data: b64 } });
+    } else if (nm.endsWith('.docx')) {
+      let txt = '';
+      try {
+        if (typeof mammoth !== 'undefined') { const r = await mammoth.extractRawText({ arrayBuffer: await s.file.arrayBuffer() }); txt = (r && r.value) || ''; }
+      } catch (err) { txt = '(docx 텍스트 추출 실패)'; }
+      parts.push({ text: `\n[보충자료(Word) 텍스트: ${s.file.name}]\n${txt}` });
+    }
+  }
+  return parts;
 }
 mClearBtn.addEventListener('click', () => { mPendingFiles = []; mRenderFileList(); });
 mResetBtn.addEventListener('click', () => {
@@ -2319,6 +2366,13 @@ mEvaluateBtn.addEventListener('click', async () => {
         setStep('PDF 원본 판독으로 데이터 추출 중...');
         const b64 = await fileToBase64(entry.file);
         userParts = [{ text: `[개별 RCT(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고 표·그림을 포함해(스캔본이면 OCR) 데이터를 추출하세요.${targetLine}` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
+      }
+      // 보충자료(supplementary) 첨부 시 본문과 함께 전송
+      if (entry.supplements && entry.supplements.length) {
+        setStep(`본문 + 보충자료 ${entry.supplements.length}개 판독 중...`);
+        userParts[0].text += `\n※ 아래에 첨부된 보충자료(supplementary)에 실제 수치 표가 있을 수 있으니 본문과 함께 읽고 추출하세요.`;
+        const suppParts = await buildSupplementParts(entry.supplements);
+        userParts = userParts.concat(suppParts);
       }
       const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
       const comps = res.comparisons || [];
