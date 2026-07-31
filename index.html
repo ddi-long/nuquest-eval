@@ -476,7 +476,7 @@
 <header>
   <div>
     <h1>NUQUEST 자동 평가 도구</h1>
-    <div class="sub">RCT 논문 PDF에 대한 NUQUEST 14개 항목 자동 평가 (Gemini API 사용)</div>
+    <div class="sub">NUQUEST 비뚤림 평가 · 근거확실성(GRADE) 평가 자동화 (Gemini API 사용)</div>
   </div>
   <div class="sub">v2.0</div>
 </header>
@@ -516,9 +516,9 @@
 
 <!-- 탭 전환 -->
 <div class="tabbar">
-  <button class="tab-btn active" data-mode="nuquest">① NUQUEST (개별 RCT 평가)</button>
-  <button class="tab-btn" data-mode="grade">② 근거확실성 평가 (GRADE)</button>
-  <button class="tab-btn" data-mode="extract">③ 메타분석 자료 추출</button>
+  <button class="tab-btn active" data-mode="nuquest">① NUQUEST · 개별 RCT 비뚤림 평가</button>
+  <button class="tab-btn" data-mode="grade">② 근거확실성(GRADE) · SR/UR</button>
+  <button class="tab-btn" data-mode="extract">③ 근거확실성(GRADE) · 개별 RCT</button>
 </div>
 
 <div id="mode-nuquest">
@@ -672,7 +672,7 @@
 
   <!-- M2. 개별 RCT 업로드 -->
   <section class="card">
-    <h2>② 개별 RCT 논문 PDF 업로드 (최대 30편)</h2>
+    <h2>② 개별 RCT 논문 PDF 업로드 (최대 30편) — 메타분석 자료 추출</h2>
     <div id="m-dropzone" class="dropzone">
       <p>📄 개별 RCT PDF를 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
       <p class="hint">지표별 메타분석 원자료(data_B) 추출 · 여러 번 나눠 올려도 결과가 <b>누적</b>됩니다</p>
