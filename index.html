@@ -440,6 +440,9 @@
   }
   .tab-btn:hover { background: #f8f9fb; }
   .tab-btn.active { color: #2563eb; border-color: #d6dbe1; background: #eff6ff; }
+  .tab-btn { text-align: center; line-height: 1.25; }
+  .tab-sub { display: block; font-size: 11px; font-weight: 500; color: #98a2b3; margin-top: 2px; }
+  .tab-btn.active .tab-sub { color: #60a5fa; }
 
   /* ===== GRADE 결과 표 ===== */
   .grade-table-wrap { overflow-x: auto; }
@@ -516,9 +519,9 @@
 
 <!-- 탭 전환 -->
 <div class="tabbar">
-  <button class="tab-btn active" data-mode="nuquest">① NUQUEST · 개별 RCT 비뚤림 평가</button>
-  <button class="tab-btn" data-mode="grade">② 근거확실성(GRADE) · SR/UR</button>
-  <button class="tab-btn" data-mode="extract">③ 근거확실성(GRADE) · 개별 RCT</button>
+  <button class="tab-btn active" data-mode="nuquest">① NUQUEST · 개별 RCT<span class="tab-sub">비뚤림위험 평가</span></button>
+  <button class="tab-btn" data-mode="grade">② GRADE · SR/UR<span class="tab-sub">근거확실성</span></button>
+  <button class="tab-btn" data-mode="extract">③ GRADE · 개별 RCT<span class="tab-sub">근거확실성 (메타분석 자료 추출)</span></button>
 </div>
 
 <div id="mode-nuquest">
@@ -2197,7 +2200,9 @@ const EXTRACT_SYSTEM_PROMPT = `당신은 메타분석 데이터 추출 전문가
     - 기저/종료값 보고 → before_mean, before_sd, after_mean, after_sd
     - SE/95%CI 보고 → before_se·after_se, before_ci_l·before_ci_u, after_ci_l·after_ci_u
   · change score 계산·SD 변환은 하지 말 것(R에서 계산).
-- 한 논문이 여러 지표를 측정하면 지표마다 별도 comparison. 여러 용량(arm)이면 비교를 분리.
+- 한 논문이 여러 지표를 측정하면 지표마다 별도 comparison.
+- [arm 분리 규칙 — 매우 중요] 한 논문 안에서 용량(예: 10·25·50 mg)이 다르거나 섭취 형태(예: juice·capsule)가 다른 중재군은 각각 **별도 comparison으로 분리**하고, arm_label에 구분값(예: "50mg", "juice")을 넣으세요. 이들은 메타분석에서 **별개의 연구로 취급**됩니다. (단일 arm이면 arm_label은 빈 문자열)
+- [시점 규칙] 여러 시점(time point)을 측정한 경우 **최종(마지막) 시점의 값만** 사용하세요.
 
 [출력] 다른 설명 없이 JSON만:
 {
@@ -2208,6 +2213,7 @@ const EXTRACT_SYSTEM_PROMPT = `당신은 메타분석 데이터 추출 전문가
   "comparisons": [
     {
       "variable": "ALT",
+      "arm_label": "",
       "unit": "U/L",
       "treatment": {"n":30,"change_mean":-8.5,"change_sd":10.2,"before_mean":null,"before_sd":null,"before_se":null,"before_ci_l":null,"before_ci_u":null,"after_mean":null,"after_sd":null,"after_se":null,"after_ci_l":null,"after_ci_u":null},
       "control":   {"n":30,"change_mean":-1.2,"change_sd":9.8,"before_mean":null,"before_sd":null,"before_se":null,"before_ci_l":null,"before_ci_u":null,"after_mean":null,"after_sd":null,"after_se":null,"after_ci_l":null,"after_ci_u":null}
@@ -2302,9 +2308,13 @@ mEvaluateBtn.addEventListener('click', async () => {
       }
       const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
       const comps = res.comparisons || [];
+      const sid = res.study_id || deriveTitle(entry.file.name);
       comps.forEach(cmp => {
+        const arm = (cmp.arm_label || '').trim();
         mExtractRows.push({
-          study_id: res.study_id || deriveTitle(entry.file.name),
+          study_id: sid,
+          arm_label: arm,
+          study: arm ? (sid + '_' + arm) : sid,   // arm 분리 시 별개 연구로 취급
           design: res.design || 'parallel',
           asian_eth: res.asian_ethnicity === true,
           asian_var: res.asian_variety === true,
@@ -2332,7 +2342,7 @@ function computeExtractSummary() {
     const v = r.variable || '(미상)';
     if (!byVar[v]) byVar[v] = { variable: v, studies: new Set(), n_t: 0, n_c: 0, units: new Set(), total: 0, asian: false };
     const g = byVar[v];
-    g.studies.add(r.study_id);
+    g.studies.add(r.study);
     const nt = NUM(r.t.n) || 0, nc = NUM(r.c.n) || 0;
     g.n_t += nt; g.n_c += nc;
     if (r.unit) g.units.add(r.unit);
@@ -2389,7 +2399,7 @@ function downloadDataB() {
   mExtractRows.forEach((r, i) => {
     const tvals = ARM_FIELDS.map(f => NUM(r.t[f]));
     const cvals = ARM_FIELDS.map(f => NUM(r.c[f]));
-    aoa.push([i+1, r.study_id, r.asian_eth ? 'Y' : 'N', r.asian_var ? 'Y' : 'N', r.variable, r.unit, ...tvals, ...cvals]);
+    aoa.push([i+1, r.study, r.asian_eth ? 'Y' : 'N', r.asian_var ? 'Y' : 'N', r.variable, r.unit, ...tvals, ...cvals]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges'] = [xMerge(0,6,0,18), xMerge(0,19,0,31)];
@@ -2407,7 +2417,7 @@ function downloadDataB() {
   // ---- R_data ----
   const rAoa = [['var','study','unit','n_t','mean_t','sd_t','n_c','mean_c','sd_c']];
   mExtractRows.forEach(r => {
-    rAoa.push([r.variable, r.study_id, r.unit, NUM(r.t.n), NUM(r.t.change_mean), NUM(r.t.change_sd), NUM(r.c.n), NUM(r.c.change_mean), NUM(r.c.change_sd)]);
+    rAoa.push([r.variable, r.study, r.unit, NUM(r.t.n), NUM(r.t.change_mean), NUM(r.t.change_sd), NUM(r.c.n), NUM(r.c.change_mean), NUM(r.c.change_sd)]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(rAoa);
   ws2['!cols'] = [{wch:12},{wch:12},{wch:9},{wch:7},{wch:10},{wch:10},{wch:7},{wch:10},{wch:10}];
