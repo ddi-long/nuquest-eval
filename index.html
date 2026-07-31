@@ -2377,7 +2377,15 @@ mEvaluateBtn.addEventListener('click', async () => {
         userParts = userParts.concat(suppParts);
       }
       const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
-      const comps = res.comparisons || [];
+      let comps = res.comparisons || [];
+      // '지정 지표만 추출' 강제 필터 (모델이 초과 추출해도 도구가 걸러냄)
+      if (mOnlyTargets && mTargets) {
+        const tl = mTargets.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+        comps = comps.filter(cmp => {
+          const v = (cmp.variable || '').toLowerCase();
+          return tl.some(t => t && (v === t || v.includes(t)));  // 변수명이 목표를 포함(모델이 목표명으로 통일했을 때)
+        });
+      }
       const sid = res.study_id || deriveTitle(entry.file.name);
       comps.forEach(cmp => {
         const arm = (cmp.arm_label || '').trim();
