@@ -688,9 +688,10 @@
     <div class="form-row" style="margin-top:12px; align-items:center;">
       <label for="mTargetInput" style="font-size:13px; color:#4a5260; align-self:center; white-space:nowrap;">목표 지표 (선택)</label>
       <input type="text" id="mTargetInput" placeholder="예: contrast sensitivity, LDL — 쉼표로 구분" style="flex:1; min-width:200px; padding:8px 12px; border:1px solid #c8cdd4; border-radius:6px; font-size:14px; font-family:inherit;">
+      <label style="font-size:13px; color:#4a5260; align-self:center; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="mOnlyTarget"> 지정 지표만 추출</label>
     </div>
     <p class="hint" style="font-size:12px; color:#6b7480; margin:4px 0 10px;">
-      지정하면 논문마다 다른 이름(예: MCS = mesopic contrast sensitivity)을 <b>이 지표로 통일</b>해 우선 추출합니다. 비우면 모든 지표를 추출합니다.
+      지정하면 논문마다 다른 이름(예: MCS = mesopic contrast sensitivity)을 <b>이 지표로 통일</b>해 추출합니다. <b>'지정 지표만 추출'</b>을 켜면 그 지표만 뽑고 나머지는 무시합니다(비우면 전체 추출).
     </p>
     <div class="form-row">
       <button id="mEvaluateBtn" disabled>추출 시작</button>
@@ -2334,6 +2335,7 @@ mEvaluateBtn.addEventListener('click', async () => {
   if (mPendingFiles.length === 0) return;
 
   const mTargets = (document.getElementById('mTargetInput').value || '').trim();
+  const mOnlyTargets = document.getElementById('mOnlyTarget').checked;
   mEvaluateBtn.disabled = true; mClearBtn.disabled = true;
   mProgressCard.style.display = 'block';
   mProgressList.innerHTML = '';
@@ -2354,7 +2356,7 @@ mEvaluateBtn.addEventListener('click', async () => {
     try {
       if (i > 0) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
       const targetLine = mTargets
-        ? `\n[목표 지표] 특히 다음 지표(들)의 데이터를 우선 추출하고, 논문에서 다른 이름(예: MCS = mesopic contrast sensitivity)으로 불려도 이 목표 지표로 매핑하여 variable에 목표 지표명으로 통일하세요: ${mTargets}. (목표 지표 외 다른 지표도 함께 추출)`
+        ? `\n[목표 지표] ${mOnlyTargets ? '오직 다음 지표(들)만 추출하고 나머지 지표는 모두 무시하세요' : '특히 다음 지표(들)의 데이터를 우선 추출하고(목표 지표 외 다른 지표도 함께 추출)'}. 논문에서 다른 이름(예: MCS = mesopic contrast sensitivity)으로 불려도 이 목표 지표로 매핑하여 variable에 목표 지표명으로 통일하세요: ${mTargets}.`
         : '';
       // 데이터가 표·그림에 있으므로 PDF 원본을 직접 판독(대용량만 텍스트 대체)
       let userParts;
@@ -2408,9 +2410,10 @@ mEvaluateBtn.addEventListener('click', async () => {
 });
 
 // 지표별 집계 (crossover ×2, 아시아 하나라도 O, 단위 혼재 경고)
-function computeExtractSummary() {
+function computeExtractSummary(rows) {
+  rows = rows || mExtractRows;
   const byVar = {};
-  mExtractRows.forEach(r => {
+  rows.forEach(r => {
     const v = r.variable || '(미상)';
     if (!byVar[v]) byVar[v] = { variable: v, studies: new Set(), n_t: 0, n_c: 0, units: new Set(), total: 0, asian: false };
     const g = byVar[v];
@@ -2426,15 +2429,41 @@ function computeExtractSummary() {
     units: [...g.units], warn: g.units.size > 1, total: g.total, asian: g.asian ? 'O' : 'X'
   }));
 }
+// 필터·정렬·선택 상태
+let mExcludedVars = new Set();  // 다운로드에서 제외할 지표
+let mSortKey = 'variable', mSortDir = 1, mFilterText = '';
+function mSelectedRows() { return mExtractRows.filter(r => !mExcludedVars.has(r.variable || '(미상)')); }
 function renderExtractSummary() {
-  const summ = computeExtractSummary();
-  document.getElementById('mSummaryMeta').textContent = `(논문 ${new Set(mExtractRows.map(r=>r.study_id)).size}편 · 지표 ${summ.length}개 · 추출행 ${mExtractRows.length})`;
-  const cols = ['Variable(지표)','study 수','중재 n','대조 n','단위','경고','총 대상자수(n)','I²','아시아 포함'];
-  let html = '<div class="result-block"><div class="grade-table-wrap"><table class="grade-table"><thead><tr>';
-  cols.forEach((c,i) => html += `<th${i>=6?' style="background:#d1fae5;"':''}>${c}</th>`);
+  let summ = computeExtractSummary();
+  const totalVars = summ.length;
+  if (mFilterText) summ = summ.filter(s => s.variable.toLowerCase().includes(mFilterText.toLowerCase()));
+  summ.sort((a, b) => {
+    let av = a[mSortKey], bv = b[mSortKey];
+    if (mSortKey === 'variable' || mSortKey === 'asian') return mSortDir * String(av).localeCompare(String(bv));
+    if (mSortKey === 'units') return mSortDir * a.units.join().localeCompare(b.units.join());
+    return mSortDir * ((av || 0) - (bv || 0));
+  });
+  const selCount = totalVars - mExcludedVars.size;
+  document.getElementById('mSummaryMeta').textContent = `(논문 ${new Set(mExtractRows.map(r=>r.study_id)).size}편 · 지표 ${totalVars}개 · 선택 ${selCount}개 · 추출행 ${mExtractRows.length})`;
+  const HKEYS = [['variable','Variable(지표)'],['studies','study 수'],['n_t','중재 n'],['n_c','대조 n'],['units','단위'],['warn','경고'],['total','총 대상자수(n)'],['i2','I²'],['asian','아시아 포함']];
+  const allVisSel = summ.every(s => !mExcludedVars.has(s.variable));
+  let html = '<div class="result-block">'
+    + '<div class="form-row" style="margin-bottom:10px; align-items:center;">'
+    + `<input id="mFilterInput" placeholder="지표명 검색…" value="${escapeHTML(mFilterText)}" style="min-width:180px; padding:6px 10px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit;">`
+    + `<button id="mSelAllBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">${allVisSel ? '표시된 지표 전체 해제' : '표시된 지표 전체 선택'}</button>`
+    + '<span class="status" style="margin:0; align-self:center;">체크한 지표만 엑셀에 포함됩니다. 헤더 클릭 시 정렬.</span>'
+    + '</div>'
+    + '<div class="grade-table-wrap"><table class="grade-table"><thead><tr><th></th>';
+  HKEYS.forEach(([k, label], i) => {
+    const arrow = (mSortKey === k) ? (mSortDir === 1 ? ' ▲' : ' ▼') : '';
+    const sortable = (k !== 'warn' && k !== 'i2');
+    html += `<th data-key="${k}"${i>=6?' style="background:#d1fae5;cursor:'+(sortable?'pointer':'default')+';"':(sortable?' style="cursor:pointer;"':'')}>${label}${arrow}</th>`;
+  });
   html += '</tr></thead><tbody>';
   summ.forEach(s => {
+    const checked = !mExcludedVars.has(s.variable);
     html += '<tr>'
+      + `<td class="c"><input type="checkbox" class="m-var-chk" data-var="${escapeHTML(s.variable)}" ${checked ? 'checked' : ''}></td>`
       + `<td>${escapeHTML(s.variable)}</td>`
       + `<td class="c">${s.studies}</td>`
       + `<td class="c">${s.n_t}</td>`
@@ -2447,11 +2476,31 @@ function renderExtractSummary() {
       + '</tr>';
   });
   html += '</tbody></table></div></div>';
-  document.getElementById('mResults').innerHTML = html;
+  const el = document.getElementById('mResults');
+  el.innerHTML = html;
+  document.getElementById('mFilterInput').addEventListener('input', e => { mFilterText = e.target.value; renderExtractSummary(); });
+  el.querySelectorAll('th[data-key]').forEach(th => {
+    const k = th.dataset.key;
+    if (k === 'warn' || k === 'i2') return;
+    th.addEventListener('click', () => { if (mSortKey === k) mSortDir = -mSortDir; else { mSortKey = k; mSortDir = 1; } renderExtractSummary(); });
+  });
+  el.querySelectorAll('.m-var-chk').forEach(cb => {
+    cb.addEventListener('change', e => {
+      const v = e.target.dataset.var;
+      if (e.target.checked) mExcludedVars.delete(v); else mExcludedVars.add(v);
+      renderExtractSummary();
+    });
+  });
+  document.getElementById('mSelAllBtn').addEventListener('click', () => {
+    if (allVisSel) summ.forEach(s => mExcludedVars.add(s.variable));
+    else summ.forEach(s => mExcludedVars.delete(s.variable));
+    renderExtractSummary();
+  });
 }
 
 document.getElementById('mDownloadBtn').addEventListener('click', () => {
   if (mExtractRows.length === 0) return;
+  if (mSelectedRows().length === 0) { alert('선택된 지표가 없습니다. 표에서 다운로드할 지표를 체크하세요.'); return; }
   downloadDataB();
 });
 
@@ -2467,8 +2516,9 @@ function downloadDataB() {
   // ---- Data_extract ----
   const g1 = ['No','Study','아시아 인종','아시아 품종','Variables','Unit','Treatment (중재군)','','','','','','','','','','','','','Control (대조군)','','','','','','','','','','','',''];
   const g2 = ['','','','','','','N1','M1','SD1','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95','N2','M2','SD2','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95'];
+  const rows = mSelectedRows();
   const aoa = [g1, g2];
-  mExtractRows.forEach((r, i) => {
+  rows.forEach((r, i) => {
     const tvals = ARM_FIELDS.map(f => NUM(r.t[f]));
     const cvals = ARM_FIELDS.map(f => NUM(r.c[f]));
     aoa.push([i+1, r.study, r.asian_eth ? 'Y' : 'N', r.asian_var ? 'Y' : 'N', r.variable, r.unit, ...tvals, ...cvals]);
@@ -2488,7 +2538,7 @@ function downloadDataB() {
 
   // ---- R_data ----
   const rAoa = [['var','study','unit','n_t','mean_t','sd_t','n_c','mean_c','sd_c']];
-  mExtractRows.forEach(r => {
+  rows.forEach(r => {
     rAoa.push([r.variable, r.study, r.unit, NUM(r.t.n), NUM(r.t.change_mean), NUM(r.t.change_sd), NUM(r.c.n), NUM(r.c.change_mean), NUM(r.c.change_sd)]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(rAoa);
@@ -2497,7 +2547,7 @@ function downloadDataB() {
   XLSX.utils.book_append_sheet(wb, ws2, 'R_data');
 
   // ---- 지표별_요약 ----
-  const summ = computeExtractSummary();
+  const summ = computeExtractSummary(rows);
   const s1 = ['기본 정보','','','','','','GRADE 양식 붙여넣기용 (L~N)','',''];
   const s2 = ['Variable(지표)','study 수','중재 n','대조 n','단위','경고','총 대상자수(n)','I²','아시아 포함'];
   const sAoa = [s1, s2];
