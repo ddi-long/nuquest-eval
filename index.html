@@ -518,6 +518,7 @@
 <div class="tabbar">
   <button class="tab-btn active" data-mode="nuquest">① NUQUEST (개별 RCT 평가)</button>
   <button class="tab-btn" data-mode="grade">② 근거확실성 평가 (GRADE)</button>
+  <button class="tab-btn" data-mode="extract">③ 메타분석 자료 추출</button>
 </div>
 
 <div id="mode-nuquest">
@@ -666,6 +667,49 @@
   </div>
 
 </div><!-- /mode-grade -->
+
+<div id="mode-extract" style="display:none;">
+
+  <!-- M2. 개별 RCT 업로드 -->
+  <section class="card">
+    <h2>② 개별 RCT 논문 PDF 업로드 (최대 30편)</h2>
+    <div id="m-dropzone" class="dropzone">
+      <p>📄 개별 RCT PDF를 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
+      <p class="hint">지표별 메타분석 원자료(data_B) 추출 · 여러 번 나눠 올려도 결과가 <b>누적</b>됩니다</p>
+      <input type="file" id="m-fileInput" accept="application/pdf" multiple style="display:none">
+    </div>
+    <ul id="m-fileList" class="file-list"></ul>
+    <div class="form-row" style="margin-top:12px;">
+      <button id="mEvaluateBtn" disabled>추출 시작</button>
+      <button id="mClearBtn" class="secondary">파일 목록 비우기</button>
+      <button id="mResetBtn" class="danger">누적 결과 초기화</button>
+    </div>
+    <p class="hint" style="font-size:12px; color:#6b7480; margin:8px 0 0;">
+      논문에 보고된 원자료(N·mean·SD·SE·CI)만 추출합니다. change score·SD 변환·I²·단위 변환은 R에서 계산합니다.
+    </p>
+  </section>
+
+  <!-- M3. 진행 상황 -->
+  <section class="card" id="mProgressCard" style="display:none;">
+    <h2>③ 진행 상황</h2>
+    <ul id="mProgressList" class="progress-list"></ul>
+  </section>
+
+  <!-- M4. 지표별 요약 -->
+  <section id="mResultsSection" style="display:none;">
+    <div class="card">
+      <h2>④ 지표별 요약 <span id="mSummaryMeta" class="sub" style="font-weight:400;"></span></h2>
+      <div class="legend">
+        <span>뒤쪽 3열(총 대상자수 · I² · 아시아 포함)이 <b>6품목 기능성명 M·L·N</b>에 붙여넣을 값입니다 (I²는 R에서).</span>
+      </div>
+      <div class="download-row">
+        <button id="mDownloadBtn">📥 data_B 엑셀 다운로드 (Data_extract · R_data · 지표별 요약)</button>
+      </div>
+    </div>
+    <div id="mResults"></div>
+  </section>
+
+</div><!-- /mode-extract -->
 
 </div>
 
@@ -1671,8 +1715,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const mode = btn.dataset.mode;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-    document.getElementById('mode-nuquest').style.display = (mode === 'nuquest') ? '' : 'none';
-    document.getElementById('mode-grade').style.display = (mode === 'grade') ? '' : 'none';
+    ['nuquest', 'grade', 'extract'].forEach(m => {
+      const el = document.getElementById('mode-' + m);
+      if (el) el.style.display = (mode === m) ? '' : 'none';
+    });
   });
 });
 
@@ -2131,6 +2177,263 @@ function downloadEvidenceExcel() {
   XLSX.utils.book_append_sheet(wb, ws2, 'grade_markers');
 
   XLSX.writeFile(wb, 'evidence_review_입력셀_' + dateStamp() + '.xlsx');
+}
+
+// =============================================================
+// ③ 메타분석 자료 추출 (개별 RCT → data_B)
+// =============================================================
+const EXTRACT_SYSTEM_PROMPT = `당신은 메타분석 데이터 추출 전문가입니다. 제공된 개별 RCT 논문에서 측정된 각 결과지표(Variable)에 대해 중재군·대조군의 원자료를 추출하세요. (해석·단위변환 없이 논문에 보고된 값 그대로)
+
+[추출 지침]
+- study_id: 제1저자_연도 (예: Kim_2020)
+- design: "parallel"(평행군) 또는 "crossover"(교차)
+- asian_ethnicity: 대상자가 아시아인이면 true, 아니면 false
+- asian_variety: 사용한 농산물/시료가 아시아산이면 true, 아니면 false
+- 각 결과지표(Variable)마다 중재군(treatment)·대조군(control)의 값:
+  · unit: 보고된 단위 그대로 (예: U/L, mg/dL, mmHg). 절대 변환하지 말 것.
+  · n: 각 군 대상자수
+  · 보고된 형태 그대로 채우고 없는 값은 null:
+    - 변화량(change)을 직접 보고 → change_mean, change_sd
+    - 기저/종료값 보고 → before_mean, before_sd, after_mean, after_sd
+    - SE/95%CI 보고 → before_se·after_se, before_ci_l·before_ci_u, after_ci_l·after_ci_u
+  · change score 계산·SD 변환은 하지 말 것(R에서 계산).
+- 한 논문이 여러 지표를 측정하면 지표마다 별도 comparison. 여러 용량(arm)이면 비교를 분리.
+
+[출력] 다른 설명 없이 JSON만:
+{
+  "study_id": "Kim_2020",
+  "design": "parallel",
+  "asian_ethnicity": true,
+  "asian_variety": true,
+  "comparisons": [
+    {
+      "variable": "ALT",
+      "unit": "U/L",
+      "treatment": {"n":30,"change_mean":-8.5,"change_sd":10.2,"before_mean":null,"before_sd":null,"before_se":null,"before_ci_l":null,"before_ci_u":null,"after_mean":null,"after_sd":null,"after_se":null,"after_ci_l":null,"after_ci_u":null},
+      "control":   {"n":30,"change_mean":-1.2,"change_sd":9.8,"before_mean":null,"before_sd":null,"before_se":null,"before_ci_l":null,"before_ci_u":null,"after_mean":null,"after_sd":null,"after_se":null,"after_ci_l":null,"after_ci_u":null}
+    }
+  ]
+}`;
+
+const ARM_FIELDS = ['n','change_mean','change_sd','before_mean','before_sd','before_se','before_ci_l','before_ci_u','after_mean','after_sd','after_se','after_ci_l','after_ci_u'];
+const NUM = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? '' : Number(v);
+
+// 파일 관리
+let mPendingFiles = [];
+let mExtractRows = [];  // 누적 (지표별 comparison 단위)
+const mDropzone = document.getElementById('m-dropzone');
+const mFileInput = document.getElementById('m-fileInput');
+const mFileListEl = document.getElementById('m-fileList');
+const mEvaluateBtn = document.getElementById('mEvaluateBtn');
+const mClearBtn = document.getElementById('mClearBtn');
+const mResetBtn = document.getElementById('mResetBtn');
+
+mDropzone.addEventListener('click', () => mFileInput.click());
+mDropzone.addEventListener('dragover', e => { e.preventDefault(); mDropzone.classList.add('hover'); });
+mDropzone.addEventListener('dragleave', () => mDropzone.classList.remove('hover'));
+mDropzone.addEventListener('drop', e => { e.preventDefault(); mDropzone.classList.remove('hover'); mAddFiles(e.dataTransfer.files); });
+mFileInput.addEventListener('change', e => mAddFiles(e.target.files));
+
+function mAddFiles(filelist) {
+  const arr = Array.from(filelist).filter(f => f.type === 'application/pdf');
+  if (arr.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
+  for (const f of arr) {
+    if (mPendingFiles.length >= 30) { alert('최대 30편까지 업로드 가능합니다. (여러 번 나눠 올려도 결과는 누적됩니다)'); break; }
+    mPendingFiles.push({ file: f, id: 'm' + Date.now() + '_' + Math.random().toString(36).slice(2,7) });
+  }
+  mRenderFileList();
+}
+function mRenderFileList() {
+  mFileListEl.innerHTML = '';
+  mPendingFiles.forEach((entry, idx) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>📄</span><span class="name">${escapeHTML(entry.file.name)}</span><span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span><button class="remove" data-idx="${idx}">삭제</button>`;
+    mFileListEl.appendChild(li);
+  });
+  mFileListEl.querySelectorAll('.remove').forEach(btn => {
+    btn.addEventListener('click', e => { mPendingFiles.splice(parseInt(e.target.dataset.idx), 1); mRenderFileList(); });
+  });
+  mEvaluateBtn.disabled = mPendingFiles.length === 0;
+}
+mClearBtn.addEventListener('click', () => { mPendingFiles = []; mRenderFileList(); });
+mResetBtn.addEventListener('click', () => {
+  if (mExtractRows.length && !confirm('누적된 추출 결과를 모두 지울까요?')) return;
+  mExtractRows = [];
+  document.getElementById('mResultsSection').style.display = 'none';
+  document.getElementById('mResults').innerHTML = '';
+});
+
+// 파이프라인 (누적)
+const mProgressCard = document.getElementById('mProgressCard');
+const mProgressList = document.getElementById('mProgressList');
+mEvaluateBtn.addEventListener('click', async () => {
+  const apiKey = localStorage.getItem(KEY_STORAGE);
+  if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return; }
+  if (mPendingFiles.length === 0) return;
+
+  mEvaluateBtn.disabled = true; mClearBtn.disabled = true;
+  mProgressCard.style.display = 'block';
+  mProgressList.innerHTML = '';
+
+  const targets = mPendingFiles.slice();
+  targets.forEach((entry, idx) => {
+    const li = document.createElement('li');
+    li.id = 'mprog_' + entry.id;
+    li.innerHTML = `<span class="badge wait">대기</span><span>${idx+1}. ${escapeHTML(entry.file.name)}</span>`;
+    mProgressList.appendChild(li);
+  });
+
+  for (let i = 0; i < targets.length; i++) {
+    const entry = targets[i];
+    const li = document.getElementById('mprog_' + entry.id);
+    const setStep = (msg) => { const s = document.getElementById('mstep_' + entry.id); if (s) s.textContent = msg; };
+    li.innerHTML = `<span class="badge run">진행중</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size" id="mstep_${entry.id}">PDF 처리 중...</span>`;
+    try {
+      const pdfText = await extractPdfText(entry.file);
+      const isScanned = pdfText.replace(/\s+/g, '').length < 300;
+      if (i > 0) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
+      setStep('Gemini 데이터 추출 요청 중...');
+      let userParts;
+      if (isScanned) {
+        const b64 = await fileToBase64(entry.file);
+        userParts = [{ text: `[개별 RCT(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고(스캔본이면 OCR) 데이터를 추출하세요.` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
+      } else {
+        userParts = [{ text: `[개별 RCT: ${entry.file.name}]\n\n${pdfText}` }];
+      }
+      const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
+      const comps = res.comparisons || [];
+      comps.forEach(cmp => {
+        mExtractRows.push({
+          study_id: res.study_id || deriveTitle(entry.file.name),
+          design: res.design || 'parallel',
+          asian_eth: res.asian_ethnicity === true,
+          asian_var: res.asian_variety === true,
+          variable: cmp.variable || '',
+          unit: cmp.unit || '',
+          t: cmp.treatment || {}, c: cmp.control || {}
+        });
+      });
+      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${comps.length}개 추출</span>`;
+    } catch (err) {
+      console.error(err);
+      li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
+    }
+  }
+
+  mEvaluateBtn.disabled = false; mClearBtn.disabled = false;
+  mPendingFiles = []; mRenderFileList();  // 업로드 목록 비움(결과는 누적)
+  if (mExtractRows.length > 0) { document.getElementById('mResultsSection').style.display = 'block'; renderExtractSummary(); }
+});
+
+// 지표별 집계 (crossover ×2, 아시아 하나라도 O, 단위 혼재 경고)
+function computeExtractSummary() {
+  const byVar = {};
+  mExtractRows.forEach(r => {
+    const v = r.variable || '(미상)';
+    if (!byVar[v]) byVar[v] = { variable: v, studies: new Set(), n_t: 0, n_c: 0, units: new Set(), total: 0, asian: false };
+    const g = byVar[v];
+    g.studies.add(r.study_id);
+    const nt = NUM(r.t.n) || 0, nc = NUM(r.c.n) || 0;
+    g.n_t += nt; g.n_c += nc;
+    if (r.unit) g.units.add(r.unit);
+    g.total += (r.design === 'crossover') ? (nt || nc) * 2 : (nt + nc);
+    if (r.asian_eth || r.asian_var) g.asian = true;
+  });
+  return Object.values(byVar).map(g => ({
+    variable: g.variable, studies: g.studies.size, n_t: g.n_t, n_c: g.n_c,
+    units: [...g.units], warn: g.units.size > 1, total: g.total, asian: g.asian ? 'O' : 'X'
+  }));
+}
+function renderExtractSummary() {
+  const summ = computeExtractSummary();
+  document.getElementById('mSummaryMeta').textContent = `(논문 ${new Set(mExtractRows.map(r=>r.study_id)).size}편 · 지표 ${summ.length}개 · 추출행 ${mExtractRows.length})`;
+  const cols = ['Variable(지표)','study 수','중재 n','대조 n','단위','경고','총 대상자수(n)','I²','아시아 포함'];
+  let html = '<div class="result-block"><div class="grade-table-wrap"><table class="grade-table"><thead><tr>';
+  cols.forEach((c,i) => html += `<th${i>=6?' style="background:#d1fae5;"':''}>${c}</th>`);
+  html += '</tr></thead><tbody>';
+  summ.forEach(s => {
+    html += '<tr>'
+      + `<td>${escapeHTML(s.variable)}</td>`
+      + `<td class="c">${s.studies}</td>`
+      + `<td class="c">${s.n_t}</td>`
+      + `<td class="c">${s.n_c}</td>`
+      + `<td>${escapeHTML(s.units.join(', '))}</td>`
+      + `<td>${s.warn ? '<span class="dg-강등">⚠ 단위 혼재 → 선형 변환 또는 SMD 검토</span>' : ''}</td>`
+      + `<td class="c" style="background:#ecfdf5;"><b>${s.total}</b></td>`
+      + `<td class="c" style="background:#f1f3f5;color:#98a2b3;">R</td>`
+      + `<td class="c" style="background:#ecfdf5;">${s.asian}</td>`
+      + '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  document.getElementById('mResults').innerHTML = html;
+}
+
+document.getElementById('mDownloadBtn').addEventListener('click', () => {
+  if (mExtractRows.length === 0) return;
+  downloadDataB();
+});
+
+// data_B 엑셀 (Data_extract + R_data + 지표별 요약)
+function xMerge(r1,c1,r2,c2){ return { s:{r:r1,c:c1}, e:{r:r2,c:c2} }; }
+function downloadDataB() {
+  const wb = XLSX.utils.book_new();
+  const HFILL = 'EAF0FB', GFILL = 'DBE7FB', EXT = 'FFF6D5';
+  const hSty = { font:{bold:true,sz:10}, fill:{fgColor:{rgb:HFILL}}, alignment:{horizontal:'center',vertical:'center',wrapText:true}, border:xBorder() };
+  const gSty = { font:{bold:true,sz:10}, fill:{fgColor:{rgb:GFILL}}, alignment:{horizontal:'center',vertical:'center'}, border:xBorder() };
+  const cSty = { font:{sz:10}, alignment:{vertical:'top',wrapText:true}, border:xBorder() };
+
+  // ---- Data_extract ----
+  const g1 = ['No','Study','아시아 인종','아시아 품종','Variables','Unit','Treatment (중재군)','','','','','','','','','','','','','Control (대조군)','','','','','','','','','','','',''];
+  const g2 = ['','','','','','','N1','M1','SD1','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95','N2','M2','SD2','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95'];
+  const aoa = [g1, g2];
+  mExtractRows.forEach((r, i) => {
+    const tvals = ARM_FIELDS.map(f => NUM(r.t[f]));
+    const cvals = ARM_FIELDS.map(f => NUM(r.c[f]));
+    aoa.push([i+1, r.study_id, r.asian_eth ? 'Y' : 'N', r.asian_var ? 'Y' : 'N', r.variable, r.unit, ...tvals, ...cvals]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = [xMerge(0,6,0,18), xMerge(0,19,0,31)];
+  for (let c = 0; c < 6; c++) ws['!merges'].push(xMerge(0,c,1,c));
+  ws['!cols'] = [{wch:5},{wch:12},{wch:10},{wch:10},{wch:11},{wch:9}].concat(Array(26).fill({wch:9}));
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let R = 0; R <= range.e.r; R++) for (let C = 0; C <= range.e.c; C++) {
+    const addr = XLSX.utils.encode_cell({r:R,c:C}); const cell = ws[addr] || (ws[addr] = {t:'s',v:''});
+    if (R === 0) cell.s = (C >= 6) ? gSty : hSty;
+    else if (R === 1) cell.s = hSty;
+    else { cell.s = Object.assign({}, cSty); if (C >= 6 && cell.v !== '') cell.s.fill = {fgColor:{rgb:EXT}}; }
+  }
+  XLSX.utils.book_append_sheet(wb, ws, 'Data_extract');
+
+  // ---- R_data ----
+  const rAoa = [['var','study','unit','n_t','mean_t','sd_t','n_c','mean_c','sd_c']];
+  mExtractRows.forEach(r => {
+    rAoa.push([r.variable, r.study_id, r.unit, NUM(r.t.n), NUM(r.t.change_mean), NUM(r.t.change_sd), NUM(r.c.n), NUM(r.c.change_mean), NUM(r.c.change_sd)]);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(rAoa);
+  ws2['!cols'] = [{wch:12},{wch:12},{wch:9},{wch:7},{wch:10},{wch:10},{wch:7},{wch:10},{wch:10}];
+  if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws2);
+  XLSX.utils.book_append_sheet(wb, ws2, 'R_data');
+
+  // ---- 지표별_요약 ----
+  const summ = computeExtractSummary();
+  const s1 = ['기본 정보','','','','','','GRADE 양식 붙여넣기용 (L~N)','',''];
+  const s2 = ['Variable(지표)','study 수','중재 n','대조 n','단위','경고','총 대상자수(n)','I²','아시아 포함'];
+  const sAoa = [s1, s2];
+  summ.forEach(s => sAoa.push([s.variable, s.studies, s.n_t, s.n_c, s.units.join(', '), s.warn ? '⚠ 단위 혼재 → 선형 변환 또는 SMD 검토' : '', s.total, '', s.asian]));
+  const ws3 = XLSX.utils.aoa_to_sheet(sAoa);
+  ws3['!merges'] = [xMerge(0,0,0,5), xMerge(0,6,0,8)];
+  ws3['!cols'] = [{wch:13},{wch:8},{wch:8},{wch:8},{wch:15},{wch:34},{wch:14},{wch:8},{wch:10}];
+  const gr2 = { font:{bold:true,sz:10}, fill:{fgColor:{rgb:'D1FAE5'}}, alignment:{horizontal:'center',vertical:'center'}, border:xBorder() };
+  const r3 = XLSX.utils.decode_range(ws3['!ref']);
+  for (let R = 0; R <= r3.e.r; R++) for (let C = 0; C <= r3.e.c; C++) {
+    const addr = XLSX.utils.encode_cell({r:R,c:C}); const cell = ws3[addr] || (ws3[addr] = {t:'s',v:''});
+    if (R === 0) cell.s = (C >= 6) ? gr2 : gSty;
+    else if (R === 1) cell.s = hSty;
+    else { cell.s = Object.assign({}, cSty); if (C >= 6) cell.s.fill = {fgColor:{rgb:'ECFDF5'}}; if (C === 7) cell.s.fill = {fgColor:{rgb:'F1F3F5'}}; }
+  }
+  XLSX.utils.book_append_sheet(wb, ws3, '지표별_요약');
+
+  XLSX.writeFile(wb, 'data_B_추출_' + dateStamp() + '.xlsx');
 }
 </script>
 </body>
