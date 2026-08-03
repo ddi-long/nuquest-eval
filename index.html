@@ -535,6 +535,7 @@
     <p>📄 PDF 파일을 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
     <p class="hint">한 번에 30편까지 업로드 가능 · parallel-arm / crossover / acute RCT 대상 · 한 지표의 포함 논문을 함께 평가 가능</p>
     <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none">
+    <input type="file" id="suppInput" accept="application/pdf,.docx" multiple style="display:none">
   </div>
   <div id="fileListControls" class="form-row" style="display:none; margin-top:12px; align-items:center;">
     <button id="toggleAllPdfBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">원본 판독 전체 해제</button>
@@ -934,6 +935,16 @@ dropzone.addEventListener('drop', e => {
   addFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', e => addFiles(e.target.files));
+const suppInput = document.getElementById('suppInput');
+let suppTargetIdx = -1;
+suppInput.addEventListener('change', e => {
+  if (suppTargetIdx < 0 || !pendingFiles[suppTargetIdx]) return;
+  const arr = Array.from(e.target.files).filter(f => /\.(pdf|docx)$/i.test(f.name));
+  if (arr.length === 0) alert('보충자료는 PDF 또는 Word(.docx)만 지원합니다.');
+  arr.forEach(f => pendingFiles[suppTargetIdx].supplements.push({ file: f, id: 's' + Date.now() + Math.random().toString(36).slice(2,5) }));
+  e.target.value = '';
+  renderFileList();
+});
 
 function addFiles(filelist) {
   const arr = Array.from(filelist).filter(f => f.type === 'application/pdf');
@@ -943,7 +954,7 @@ function addFiles(filelist) {
       alert('최대 30편까지 업로드 가능합니다. 먼저 등록된 파일을 삭제하거나 평가를 진행하세요.');
       break;
     }
-    pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7), forcePdf: true });
+    pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7), forcePdf: true, supplements: [] });
   }
   renderFileList();
 }
@@ -951,22 +962,34 @@ function renderFileList() {
   fileListEl.innerHTML = '';
   pendingFiles.forEach((entry, idx) => {
     const li = document.createElement('li');
+    li.style.flexDirection = 'column'; li.style.alignItems = 'stretch';
+    const suppHtml = (entry.supplements || []).map((s, si) =>
+      `<div style="display:flex; align-items:center; gap:6px; margin-left:26px; margin-top:4px; font-size:12.5px; color:#4a5260;">📎 ${escapeHTML(s.file.name)}<button class="rm-supp" data-idx="${idx}" data-sidx="${si}" style="border:none;background:transparent;color:#b42318;cursor:pointer;padding:0 4px;">✕</button></div>`
+    ).join('');
     li.innerHTML = `
-      <span>📄</span>
-      <span class="name">${escapeHTML(entry.file.name)}</span>
-      <span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span>
-      <label class="force-pdf-label" style="font-size:12px; color:#4a5260; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="체크 시 PDF 원본을 Gemini가 직접 판독합니다(표·그림 포함). 스캔본은 체크하지 않아도 자동 감지됩니다.">
-        <input type="checkbox" class="force-pdf" data-idx="${idx}" ${entry.forcePdf ? 'checked' : ''}> 원본(표·그림) 판독
-      </label>
-      <button class="remove" data-idx="${idx}">삭제</button>
-    `;
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span>📄</span>
+        <span class="name" style="flex:1;">${escapeHTML(entry.file.name)}</span>
+        <span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span>
+        <label class="force-pdf-label" style="font-size:12px; color:#4a5260; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="체크 시 PDF 원본을 Gemini가 직접 판독합니다(표·그림 포함). 스캔본은 체크하지 않아도 자동 감지됩니다.">
+          <input type="checkbox" class="force-pdf" data-idx="${idx}" ${entry.forcePdf ? 'checked' : ''}> 원본(표·그림) 판독
+        </label>
+        <button class="add-supp secondary" data-idx="${idx}" style="font-size:12px; padding:4px 9px;">＋보충자료</button>
+        <button class="remove" data-idx="${idx}">삭제</button>
+      </div>${suppHtml}`;
     fileListEl.appendChild(li);
   });
   fileListEl.querySelectorAll('.remove').forEach(btn => {
     btn.addEventListener('click', e => {
-      pendingFiles.splice(parseInt(e.target.dataset.idx), 1);
+      pendingFiles.splice(parseInt(e.currentTarget.dataset.idx), 1);
       renderFileList();
     });
+  });
+  fileListEl.querySelectorAll('.add-supp').forEach(btn => {
+    btn.addEventListener('click', e => { suppTargetIdx = parseInt(e.currentTarget.dataset.idx); suppInput.click(); });
+  });
+  fileListEl.querySelectorAll('.rm-supp').forEach(btn => {
+    btn.addEventListener('click', e => { pendingFiles[+e.currentTarget.dataset.idx].supplements.splice(+e.currentTarget.dataset.sidx, 1); renderFileList(); });
   });
   fileListEl.querySelectorAll('.force-pdf').forEach(cb => {
     cb.addEventListener('change', e => {
@@ -1027,18 +1050,22 @@ async function fileToBase64(file) {
   return btoa(binary);
 }
 
+const SUPP_NOTE = '\n※ 아래에 첨부된 보충자료(supplementary)에 무작위배정·배정은폐·눈가림·탈락/ITT·전체 결과표 등 판정 근거가 있을 수 있으니 본문과 함께 읽고 평가하세요.';
+
 // 텍스트 전송 (디지털 원문 PDF)
-async function callGemini(apiKey, paperText, fileName, onStatus) {
-  const userParts = [{ text: `[평가 대상 논문: ${fileName}]\n\n${paperText}` }];
+async function callGemini(apiKey, paperText, fileName, onStatus, suppParts) {
+  const userParts = [{ text: `[평가 대상 논문: ${fileName}]${(suppParts && suppParts.length) ? SUPP_NOTE : ''}\n\n${paperText}` }];
+  if (suppParts && suppParts.length) userParts.push(...suppParts);
   return callGeminiCore(apiKey, userParts, onStatus);
 }
 
 // PDF 원본 전송 (스캔본 OCR / 표·그림 판독)
-async function callGeminiPdf(apiKey, base64, fileName, onStatus) {
+async function callGeminiPdf(apiKey, base64, fileName, onStatus, suppParts) {
   const userParts = [
-    { text: `[평가 대상 논문(PDF 원본): ${fileName}]\n첨부한 PDF를 직접 읽고(스캔본이면 OCR로 문자 인식하여) 표·그림을 포함해 평가하세요.` },
+    { text: `[평가 대상 논문(PDF 원본): ${fileName}]\n첨부한 PDF를 직접 읽고(스캔본이면 OCR로 문자 인식하여) 표·그림을 포함해 평가하세요.${(suppParts && suppParts.length) ? SUPP_NOTE : ''}` },
     { inlineData: { mimeType: 'application/pdf', data: base64 } },
   ];
+  if (suppParts && suppParts.length) userParts.push(...suppParts);
   return callGeminiCore(apiKey, userParts, onStatus);
 }
 
@@ -1243,14 +1270,21 @@ evaluateBtn.addEventListener('click', async () => {
         for (let left = 4; left > 0; left--) { stepEl.textContent = `다음 요청까지 ${left}초 대기 (분당 한도 보호)...`; await sleep(1000); }
       }
 
+      // 보충자료(supplementary) parts 구성 (PDF 직접·docx 텍스트추출)
+      let suppParts = [];
+      if (entry.supplements && entry.supplements.length) {
+        stepEl.textContent = `보충자료 ${entry.supplements.length}개 판독 중...`;
+        suppParts = await buildSupplementParts(entry.supplements);
+      }
+
       let llmResult;
       if (usePdf) {
         stepEl.textContent = isScanned ? '스캔본 감지 — PDF 원본(OCR)으로 평가 요청 중...' : '원본(표·그림) 판독으로 평가 요청 중...';
         const base64 = await fileToBase64(entry.file);
-        llmResult = await callGeminiPdf(apiKey, base64, entry.file.name, (msg) => { stepEl.textContent = msg; });
+        llmResult = await callGeminiPdf(apiKey, base64, entry.file.name, (msg) => { stepEl.textContent = msg; }, suppParts);
       } else {
         stepEl.textContent = 'Gemini 평가 요청 중...';
-        llmResult = await callGemini(apiKey, pdfText, entry.file.name, (msg) => { stepEl.textContent = msg; });
+        llmResult = await callGemini(apiKey, pdfText, entry.file.name, (msg) => { stepEl.textContent = msg; }, suppParts);
       }
 
       // 14개 항목 보정 (LLM이 누락 시 빈 값으로 채움)
