@@ -2331,6 +2331,7 @@ function matchesTargetGroups(variable, groups) {
 // 파일 관리
 let mPendingFiles = [];
 let mExtractRows = [];  // 누적 (지표별 comparison 단위)
+let mRowSeq = 0;        // 행 고유 id(uid) 시퀀스 — 행 단위 선택용
 const mDropzone = document.getElementById('m-dropzone');
 const mFileInput = document.getElementById('m-fileInput');
 const mFileListEl = document.getElementById('m-fileList');
@@ -2439,13 +2440,87 @@ mResetBtn.addEventListener('click', () => {
 // 파이프라인 (누적)
 const mProgressCard = document.getElementById('mProgressCard');
 const mProgressList = document.getElementById('mProgressList');
+// 개별 논문 1편 추출 (배치·재시도 공용). spaceBefore=true면 요청 전 4초 대기(분당 한도 보호)
+async function mExtractOne(entry, label, spaceBefore) {
+  const apiKey = localStorage.getItem(KEY_STORAGE);
+  if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return false; }
+  const mTargets = (document.getElementById('mTargetInput').value || '').trim();
+  const mOnlyTargets = document.getElementById('mOnlyTarget').checked;
+  const li = document.getElementById('mprog_' + entry.id);
+  const setStep = (msg) => { const s = document.getElementById('mstep_' + entry.id); if (s) s.textContent = msg; };
+  li.innerHTML = `<span class="badge run">진행중</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size" id="mstep_${entry.id}">PDF 처리 중...</span>`;
+  try {
+    if (spaceBefore) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
+    const targetLine = mTargets
+      ? `\n[목표 지표] ${mOnlyTargets ? '오직 다음 지표(들)만 추출하고 나머지 지표는 모두 무시하세요' : '특히 다음 지표(들)의 데이터를 우선 추출하고(목표 지표 외 다른 지표도 함께 추출)'}. 각 목표 지표에서 괄호 안 약어와 정식명은 같은 지표입니다(예: "Intraocular pressure(IOP)"는 IOP와 동일). 논문에서 정식명·약어·다른 이름(예: MCS = mesopic contrast sensitivity) 어느 쪽으로 불려도 이 목표 지표로 매핑하고, variable에는 목표 지표 표기를 괄호 약어까지 그대로 사용해 통일하세요: ${mTargets}.`
+      : '';
+    let userParts;
+    if (entry.file.size > 18 * 1024 * 1024) {
+      setStep('대용량 PDF — 텍스트로 추출 요청 중...');
+      const pdfText = await extractPdfText(entry.file);
+      userParts = [{ text: `[개별 RCT: ${entry.file.name}]${targetLine}\n\n${pdfText}` }];
+    } else {
+      setStep('PDF 원본 판독으로 데이터 추출 중...');
+      const b64 = await fileToBase64(entry.file);
+      userParts = [{ text: `[개별 RCT(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고 표·그림을 포함해(스캔본이면 OCR) 데이터를 추출하세요.${targetLine}` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
+    }
+    if (entry.supplements && entry.supplements.length) {
+      setStep(`본문 + 보충자료 ${entry.supplements.length}개 판독 중...`);
+      userParts[0].text += `\n※ 아래에 첨부된 보충자료(supplementary)에 실제 수치 표가 있을 수 있으니 본문과 함께 읽고 추출하세요.`;
+      const suppParts = await buildSupplementParts(entry.supplements);
+      userParts = userParts.concat(suppParts);
+    }
+    const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
+    let comps = res.comparisons || [];
+    if (mOnlyTargets && mTargets) {
+      const groups = parseTargetGroups(mTargets);
+      comps = comps.filter(cmp => matchesTargetGroups(cmp.variable, groups));
+    }
+    const sid = res.study_id || deriveTitle(entry.file.name);
+    // 재추출/재시도 시 같은 파일의 기존 행 제거(중복 방지)
+    mExtractRows = mExtractRows.filter(r => r.fileName !== entry.file.name);
+    comps.forEach(cmp => {
+      const arm = (cmp.arm_label || '').trim();
+      mExtractRows.push({
+        uid: 'x' + (mRowSeq++),
+        study_id: sid,
+        arm_label: arm,
+        study: arm ? (sid + '_' + arm) : sid,   // arm 분리 시 별개 연구로 취급
+        fileName: entry.file.name,   // NUQUEST 비뚤림위험 연계용 매칭 키
+        design: res.design || 'parallel',
+        asian_eth: res.asian_ethnicity === true,
+        asian_var: res.asian_variety === true,
+        variable: cmp.variable || '',
+        unit: cmp.unit || '',
+        t: cmp.treatment || {}, c: cmp.control || {}
+      });
+    });
+    if (comps.length === 0) {
+      mFailLi(entry, label, '추출된 지표 없음 — 데이터가 표/그림에 있거나 형식이 복잡할 수 있습니다. 다시 시도하거나 목표 지표를 지정해 보세요.', '지표 0');
+      return false;
+    }
+    li.innerHTML = `<span class="badge done">완료</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${comps.length}개 추출</span>`;
+    return true;
+  } catch (err) {
+    console.error(err);
+    mFailLi(entry, label, err.message, '실패');
+    return false;
+  }
+}
+// 실패 li + '다시 시도' 버튼 (해당 논문만 재추출, 완료된 데이터는 유지)
+function mFailLi(entry, label, msg, badge) {
+  const li = document.getElementById('mprog_' + entry.id);
+  li.innerHTML = `<span class="badge fail">${badge}</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML((msg || '').slice(0,150))}</span> <button class="secondary m-retry" style="font-size:12px; padding:3px 10px; margin-left:8px;">↻ 다시 시도</button>`;
+  li.querySelector('.m-retry').addEventListener('click', async () => {
+    const ok = await mExtractOne(entry, label, false);
+    if (ok && mExtractRows.length > 0) { document.getElementById('mResultsSection').style.display = 'block'; renderExtractSummary(); }
+  });
+}
 mEvaluateBtn.addEventListener('click', async () => {
   const apiKey = localStorage.getItem(KEY_STORAGE);
   if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return; }
   if (mPendingFiles.length === 0) return;
 
-  const mTargets = (document.getElementById('mTargetInput').value || '').trim();
-  const mOnlyTargets = document.getElementById('mOnlyTarget').checked;
   mEvaluateBtn.disabled = true; mClearBtn.disabled = true;
   mProgressCard.style.display = 'block';
   mProgressList.innerHTML = '';
@@ -2459,65 +2534,7 @@ mEvaluateBtn.addEventListener('click', async () => {
   });
 
   for (let i = 0; i < targets.length; i++) {
-    const entry = targets[i];
-    const li = document.getElementById('mprog_' + entry.id);
-    const setStep = (msg) => { const s = document.getElementById('mstep_' + entry.id); if (s) s.textContent = msg; };
-    li.innerHTML = `<span class="badge run">진행중</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size" id="mstep_${entry.id}">PDF 처리 중...</span>`;
-    try {
-      if (i > 0) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
-      const targetLine = mTargets
-        ? `\n[목표 지표] ${mOnlyTargets ? '오직 다음 지표(들)만 추출하고 나머지 지표는 모두 무시하세요' : '특히 다음 지표(들)의 데이터를 우선 추출하고(목표 지표 외 다른 지표도 함께 추출)'}. 각 목표 지표에서 괄호 안 약어와 정식명은 같은 지표입니다(예: "Intraocular pressure(IOP)"는 IOP와 동일). 논문에서 정식명·약어·다른 이름(예: MCS = mesopic contrast sensitivity) 어느 쪽으로 불려도 이 목표 지표로 매핑하고, variable에는 목표 지표 표기를 괄호 약어까지 그대로 사용해 통일하세요: ${mTargets}.`
-        : '';
-      // 데이터가 표·그림에 있으므로 PDF 원본을 직접 판독(대용량만 텍스트 대체)
-      let userParts;
-      if (entry.file.size > 18 * 1024 * 1024) {
-        setStep('대용량 PDF — 텍스트로 추출 요청 중...');
-        const pdfText = await extractPdfText(entry.file);
-        userParts = [{ text: `[개별 RCT: ${entry.file.name}]${targetLine}\n\n${pdfText}` }];
-      } else {
-        setStep('PDF 원본 판독으로 데이터 추출 중...');
-        const b64 = await fileToBase64(entry.file);
-        userParts = [{ text: `[개별 RCT(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고 표·그림을 포함해(스캔본이면 OCR) 데이터를 추출하세요.${targetLine}` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
-      }
-      // 보충자료(supplementary) 첨부 시 본문과 함께 전송
-      if (entry.supplements && entry.supplements.length) {
-        setStep(`본문 + 보충자료 ${entry.supplements.length}개 판독 중...`);
-        userParts[0].text += `\n※ 아래에 첨부된 보충자료(supplementary)에 실제 수치 표가 있을 수 있으니 본문과 함께 읽고 추출하세요.`;
-        const suppParts = await buildSupplementParts(entry.supplements);
-        userParts = userParts.concat(suppParts);
-      }
-      const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
-      let comps = res.comparisons || [];
-      // '지정 지표만 추출' 강제 필터 (모델이 초과 추출해도 도구가 걸러냄) — 약어/정식명 동의어 매칭
-      if (mOnlyTargets && mTargets) {
-        const groups = parseTargetGroups(mTargets);
-        comps = comps.filter(cmp => matchesTargetGroups(cmp.variable, groups));
-      }
-      const sid = res.study_id || deriveTitle(entry.file.name);
-      comps.forEach(cmp => {
-        const arm = (cmp.arm_label || '').trim();
-        mExtractRows.push({
-          study_id: sid,
-          arm_label: arm,
-          study: arm ? (sid + '_' + arm) : sid,   // arm 분리 시 별개 연구로 취급
-          fileName: entry.file.name,   // NUQUEST 비뚤림위험 연계용 매칭 키
-          design: res.design || 'parallel',
-          asian_eth: res.asian_ethnicity === true,
-          asian_var: res.asian_variety === true,
-          variable: cmp.variable || '',
-          unit: cmp.unit || '',
-          t: cmp.treatment || {}, c: cmp.control || {}
-        });
-      });
-      if (comps.length === 0) {
-        li.innerHTML = `<span class="badge fail">지표 0</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">추출된 지표 없음 — 데이터가 표/그림에 있거나 형식이 복잡할 수 있습니다. 다시 시도하거나 목표 지표를 지정해 보세요.</span>`;
-      } else {
-        li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${comps.length}개 추출</span>`;
-      }
-    } catch (err) {
-      console.error(err);
-      li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
-    }
+    await mExtractOne(targets[i], String(i + 1), i > 0);
   }
 
   mEvaluateBtn.disabled = false; mClearBtn.disabled = false;
@@ -2547,8 +2564,52 @@ function computeExtractSummary(rows) {
 }
 // 필터·정렬·선택 상태
 let mExcludedVars = new Set();  // 다운로드에서 제외할 지표
+let mExcludedRows = new Set();  // 다운로드에서 제외할 개별 행(arm) — uid 기준
 let mSortKey = 'variable', mSortDir = 1, mFilterText = '';
-function mSelectedRows() { return mExtractRows.filter(r => !mExcludedVars.has(r.variable || '(미상)')); }
+function mSelectedRows() { return mExtractRows.filter(r => !mExcludedVars.has(r.variable || '(미상)') && !mExcludedRows.has(r.uid)); }
+
+// ===== 대표 하위그룹(arm) 자동 선택 =====
+// arm_label을 차원별로 분류: eye(0=양안<1=우세<2=비우세<3=우안<4=좌안), dose, term(단/장기), timeVal(최종시점)
+function armDims(label) {
+  const s = (label || '').toLowerCase();
+  const dims = {};
+  if (/both|average|양안|평균/.test(s)) dims.eye = 0;
+  else if (/non[-\s]?dominant|비우세|비우위|비우안/.test(s)) dims.eye = 2;
+  else if (/dominant|우세안|우위안/.test(s)) dims.eye = 1;
+  else if (/right|우안|오른/.test(s)) dims.eye = 3;
+  else if (/left|좌안|왼/.test(s)) dims.eye = 4;
+  if (/\d\s*(mg|µg|ug|mcg|kcal|mmol|ml|iu)\b|\d\s*%|dose|용량|농도|concentration|고용량|저용량|중용량/.test(s)) dims.dose = true;
+  if (/short[-\s]?term|long[-\s]?term|단기|장기/.test(s)) dims.term = true;
+  const tm = s.match(/(\d+(?:\.\d+)?)\s*(weeks?|wks?|주|months?|개월|달|days?|일|hours?|시간|min)/g);
+  if (tm) dims.timeVal = Math.max(...tm.map(x => parseFloat(x)));
+  return dims;
+}
+function autoSelectRepresentative() {
+  mExcludedRows = new Set();
+  const groups = {};
+  mExtractRows.forEach(r => { const k = (r.study_id || r.study) + '' + (r.variable || ''); (groups[k] = groups[k] || []).push(r); });
+  Object.values(groups).forEach(rows => {
+    if (rows.length <= 1) return;
+    let keep = rows.slice();
+    // 1) 시점: 단/장기(term) 라벨이 없고 시점값이 여럿이면 최종(최대) 시점만
+    const hasTerm = keep.some(r => armDims(r.arm_label).term);
+    const tvals = keep.map(r => armDims(r.arm_label).timeVal).filter(v => v != null);
+    if (!hasTerm && tvals.length > 1) {
+      const mx = Math.max(...tvals);
+      keep = keep.filter(r => { const t = armDims(r.arm_label).timeVal; return t == null || t === mx; });
+    }
+    // 2) 눈: 우선순위(양안>우세>비우세>우안>좌안) 최상위만
+    const eyes = keep.map(r => armDims(r.arm_label).eye).filter(v => v != null);
+    if (eyes.length) {
+      const best = Math.min(...eyes);
+      keep = keep.filter(r => { const e = armDims(r.arm_label).eye; return e == null || e === best; });
+    }
+    // 3) 농도(dose): 모두 유지 (필터 없음)
+    const keepSet = new Set(keep.map(r => r.uid));
+    rows.forEach(r => { if (!keepSet.has(r.uid)) mExcludedRows.add(r.uid); });
+  });
+  renderExtractSummary();
+}
 // ===== NUQUEST 연계 → GRADE 비뚤림위험 + 최종등급 =====
 let mRobBasis = 'nuquest';   // 'nuquest' | 'gigwan'
 let mGrade = {};             // { variable: { i2:'', ov:{비뚤림위험,비일관성,비직접성,비정밀성,출판비뚤림} } }
@@ -2587,8 +2648,16 @@ function domSelect(v, domName, val) {
   return `<select class="m-dom" data-var="${escapeHTML(v)}" data-dom="${domName}" style="font-size:11px;padding:2px 4px;border:1px solid #c8cdd4;border-radius:4px;background:#fff;">`
     + ['유지', '강등', '판단불가'].map(o => `<option ${o === val ? 'selected' : ''}>${o}</option>`).join('') + '</select>';
 }
+// arm 행의 대표 수치(변화량>종료값>기저값) 미리보기
+function armKeyVal(a) {
+  a = a || {};
+  if (a.change_mean != null && a.change_mean !== '') return 'Δ' + a.change_mean + (a.change_sd != null && a.change_sd !== '' ? '±' + a.change_sd : '');
+  if (a.after_mean != null && a.after_mean !== '') return a.after_mean + (a.after_sd != null && a.after_sd !== '' ? '±' + a.after_sd : '');
+  if (a.before_mean != null && a.before_mean !== '') return a.before_mean;
+  return '-';
+}
 function renderExtractSummary() {
-  let summ = computeExtractSummary();
+  let summ = computeExtractSummary(mExtractRows.filter(r => !mExcludedRows.has(r.uid)));
   const totalVars = summ.length;
   if (mFilterText) summ = summ.filter(s => s.variable.toLowerCase().includes(mFilterText.toLowerCase()));
   summ.sort((a, b) => {
@@ -2598,7 +2667,11 @@ function renderExtractSummary() {
     return mSortDir * ((av || 0) - (bv || 0));
   });
   const selCount = totalVars - mExcludedVars.size;
-  document.getElementById('mSummaryMeta').textContent = `(논문 ${new Set(mExtractRows.map(r=>r.study_id)).size}편 · 지표 ${totalVars}개 · 선택 ${selCount}개 · 추출행 ${mExtractRows.length})`;
+  // 다중 arm 그룹(하위그룹 선택 대상)
+  const armGroups = {};
+  mExtractRows.forEach(r => { const k = (r.study_id || r.study) + '' + (r.variable || ''); (armGroups[k] = armGroups[k] || []).push(r); });
+  const multiArm = Object.entries(armGroups).filter(([k, rows]) => rows.length > 1);
+  document.getElementById('mSummaryMeta').textContent = `(논문 ${new Set(mExtractRows.map(r=>r.study_id)).size}편 · 지표 ${totalVars}개 · 선택 ${selCount}개 · 추출행 ${mExtractRows.length}${mExcludedRows.size ? ' · 제외 arm ' + mExcludedRows.size : ''})`;
   const HKEYS = [['variable','Variable(지표)'],['studies','study 수'],['total','총 대상자수(n)'],['units','단위'],['asian','아시아']];
   const allVisSel = summ.every(s => !mExcludedVars.has(s.variable));
   const nqCount = Object.keys(loadNuquestStore()).length;
@@ -2608,6 +2681,7 @@ function renderExtractSummary() {
     + `<button id="mSelAllBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">${allVisSel ? '표시 지표 전체 해제' : '표시 지표 전체 선택'}</button>`
     + '<label style="font-size:12.5px; color:#4a5260; display:inline-flex; align-items:center; gap:4px;">비뚤림위험 기준: '
     + `<select id="mRobBasis" style="font-size:12.5px; padding:4px 6px; border:1px solid #c8cdd4; border-radius:5px;"><option value="nuquest" ${mRobBasis==='nuquest'?'selected':''}>NUQUEST 총점</option><option value="gigwan" ${mRobBasis==='gigwan'?'selected':''}>기관 총점</option></select></label>`
+    + (multiArm.length ? `<button id="mAutoRepBtn" class="secondary" style="font-size:12.5px; padding:5px 12px; background:#eef6ff;">✦ 대표 하위그룹 자동 선택</button><button id="mAllArmBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">모든 arm 포함</button>` : '')
     + `<span class="status" style="margin:0;">NUQUEST 연계 ${nqCount}편 저장됨 · 체크 지표만 엑셀 포함</span>`
     + '</div>'
     + '<div class="grade-table-wrap"><table class="grade-table"><thead><tr><th></th>';
@@ -2637,11 +2711,40 @@ function renderExtractSummary() {
       + `<td style="font-size:11px;color:#6b7480;">${escapeHTML(g.rob.note)}${g.rob.linked ? '' : ' ⚠'}</td>`
       + '</tr>';
   });
-  html += '</tbody></table></div></div>';
+  html += '</tbody></table></div>';
+  // ---- 하위그룹(arm) 선택 상세 ----
+  if (multiArm.length) {
+    html += '<div style="margin-top:16px;">'
+      + '<div style="font-weight:600; font-size:13px; color:#2c3540; margin-bottom:6px;">하위그룹(arm) 선택 — 같은 논문·지표에서 여러 행이 추출된 경우 대표만 남기세요</div>'
+      + '<div class="grade-table-wrap"><table class="grade-table"><thead><tr>'
+      + '<th>포함</th><th>Study</th><th>지표</th><th>구분(arm)</th><th>중재 n</th><th>대조 n</th><th>중재값</th><th>대조값</th></tr></thead><tbody>';
+    multiArm.forEach(([k, rows]) => {
+      rows.forEach((r, ri) => {
+        html += '<tr' + (ri === 0 ? ' style="border-top:2px solid #b8c0cc;"' : '') + '>'
+          + `<td class="c"><input type="checkbox" class="m-row-chk" data-uid="${r.uid}" ${!mExcludedRows.has(r.uid) ? 'checked' : ''}></td>`
+          + `<td>${escapeHTML(r.study_id || r.study)}</td>`
+          + `<td>${escapeHTML(r.variable || '')}</td>`
+          + `<td>${escapeHTML(r.arm_label || '(구분없음)')}</td>`
+          + `<td class="c">${NUM(r.t.n)}</td>`
+          + `<td class="c">${NUM(r.c.n)}</td>`
+          + `<td class="c">${escapeHTML(String(armKeyVal(r.t)))}</td>`
+          + `<td class="c">${escapeHTML(String(armKeyVal(r.c)))}</td>`
+          + '</tr>';
+      });
+    });
+    html += '</tbody></table></div>'
+      + '<p class="hint" style="font-size:11.5px; color:#6b7480; margin:6px 0 0;">✦ 자동 선택 규칙: <b>시점</b>=최종 시점만(단·장기 시험으로 나뉜 경우는 둘 다) · <b>농도</b>=모두 포함 · <b>눈</b>=양안&gt;우세&gt;비우세&gt;우안&gt;좌안 중 하나. 체크박스로 수동 조정할 수 있습니다.</p></div>';
+  }
+  html += '</div>';
   const el = document.getElementById('mResults');
   el.innerHTML = html;
   document.getElementById('mFilterInput').addEventListener('input', e => { mFilterText = e.target.value; renderExtractSummary(); });
   document.getElementById('mRobBasis').addEventListener('change', e => { mRobBasis = e.target.value; renderExtractSummary(); });
+  if (multiArm.length) {
+    const ab = document.getElementById('mAutoRepBtn'); if (ab) ab.addEventListener('click', autoSelectRepresentative);
+    const bb = document.getElementById('mAllArmBtn'); if (bb) bb.addEventListener('click', () => { mExcludedRows = new Set(); renderExtractSummary(); });
+    el.querySelectorAll('.m-row-chk').forEach(cb => cb.addEventListener('change', e => { const u = e.target.dataset.uid; if (e.target.checked) mExcludedRows.delete(u); else mExcludedRows.add(u); renderExtractSummary(); }));
+  }
   el.querySelectorAll('th[data-key]').forEach(th => { const k = th.dataset.key; th.addEventListener('click', () => { if (mSortKey === k) mSortDir = -mSortDir; else { mSortKey = k; mSortDir = 1; } renderExtractSummary(); }); });
   el.querySelectorAll('.m-var-chk').forEach(cb => cb.addEventListener('change', e => { const v = e.target.dataset.var; if (e.target.checked) mExcludedVars.delete(v); else mExcludedVars.add(v); renderExtractSummary(); }));
   el.querySelectorAll('.m-i2').forEach(inp => inp.addEventListener('change', e => { mGradeState(e.target.dataset.var).i2 = e.target.value.trim(); renderExtractSummary(); }));
