@@ -522,18 +522,18 @@
 <!-- 탭 전환 -->
 <div class="tabbar">
   <button class="tab-btn active" data-mode="nuquest">① NUQUEST · 개별 RCT<span class="tab-sub">비뚤림위험 평가</span></button>
-  <button class="tab-btn" data-mode="grade">② GRADE · SR/UR<span class="tab-sub">근거확실성</span></button>
-  <button class="tab-btn" data-mode="extract">③ GRADE · 개별 RCT<span class="tab-sub">근거확실성 (메타분석 자료 추출)</span></button>
+  <button class="tab-btn" data-mode="extract">② GRADE · 개별 RCT<span class="tab-sub">근거확실성 (메타분석 자료 추출)</span></button>
+  <button class="tab-btn" data-mode="grade">③ GRADE · SR/UR<span class="tab-sub">근거확실성</span></button>
 </div>
 
 <div id="mode-nuquest">
 
 <!-- 2. PDF 업로드 -->
 <section class="card">
-  <h2>② RCT 논문 PDF 업로드 (최대 5개)</h2>
+  <h2>② RCT 논문 PDF 업로드 (최대 30편)</h2>
   <div id="dropzone" class="dropzone">
     <p>📄 PDF 파일을 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
-    <p class="hint">한 번에 5개까지 업로드 가능 · parallel-arm / crossover / acute RCT 대상</p>
+    <p class="hint">한 번에 30편까지 업로드 가능 · parallel-arm / crossover / acute RCT 대상 · 한 지표의 포함 논문을 함께 평가 가능</p>
     <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none">
   </div>
   <div id="fileListControls" class="form-row" style="display:none; margin-top:12px; align-items:center;">
@@ -578,6 +578,7 @@
     </div>
     <div class="download-row">
       <button id="downloadAllBtn">📥 전체 결과 통합 엑셀 다운로드</button>
+      <button id="sendToGradeBtn" class="secondary">➡ GRADE 비뚤림위험으로 넘기기</button>
     </div>
   </div>
   <div id="results"></div>
@@ -938,8 +939,8 @@ function addFiles(filelist) {
   const arr = Array.from(filelist).filter(f => f.type === 'application/pdf');
   if (arr.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
   for (const f of arr) {
-    if (pendingFiles.length >= 5) {
-      alert('최대 5개까지 업로드 가능합니다. 먼저 등록된 파일을 삭제하거나 평가를 진행하세요.');
+    if (pendingFiles.length >= 30) {
+      alert('최대 30편까지 업로드 가능합니다. 먼저 등록된 파일을 삭제하거나 평가를 진행하세요.');
       break;
     }
     pendingFiles.push({ file: f, id: 'f' + Date.now() + '_' + Math.random().toString(36).slice(2,7), forcePdf: true });
@@ -1511,6 +1512,19 @@ function renderAllResults() {
 document.getElementById('downloadAllBtn').addEventListener('click', () => {
   if (allResults.length === 0) return;
   downloadExcel(allResults, 'NUQUEST_results_' + dateStamp() + '.xlsx');
+});
+
+// NUQUEST 결과 → GRADE 비뚤림위험 연계용 저장 (파일명 기준, 기관·NUQUEST 총점)
+const NUQUEST_FOR_GRADE = 'nuquest_for_grade_v1';
+document.getElementById('sendToGradeBtn').addEventListener('click', () => {
+  if (allResults.length === 0) { alert('먼저 평가를 실행하세요.'); return; }
+  let store = {};
+  try { store = JSON.parse(localStorage.getItem(NUQUEST_FOR_GRADE) || '{}'); } catch (e) { store = {}; }
+  allResults.forEach(r => {
+    store[r.fileName] = { gigwan: r.scoreA, nuquest: r.scoreB, title: r.paperTitle };
+  });
+  localStorage.setItem(NUQUEST_FOR_GRADE, JSON.stringify(store));
+  alert(allResults.length + '편의 NUQUEST 등급을 저장했습니다.\n② GRADE·개별 RCT 탭에서 같은 파일명의 논문을 추출하면 비뚤림위험에 자동 반영됩니다. (결과는 누적되며, 다시 넘기면 갱신)');
 });
 
 // =============================================================
@@ -2393,6 +2407,7 @@ mEvaluateBtn.addEventListener('click', async () => {
           study_id: sid,
           arm_label: arm,
           study: arm ? (sid + '_' + arm) : sid,   // arm 분리 시 별개 연구로 취급
+          fileName: entry.file.name,   // NUQUEST 비뚤림위험 연계용 매칭 키
           design: res.design || 'parallel',
           asian_eth: res.asian_ethnicity === true,
           asian_var: res.asian_variety === true,
