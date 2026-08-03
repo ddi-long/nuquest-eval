@@ -596,6 +596,11 @@
       <p>📄 SR·UR·메타분석 PDF를 끌어놓거나 <b>클릭해서 선택</b>하세요</p>
       <p class="hint">체계적 문헌고찰(SR) / 엄브렐라리뷰(UR) / 메타분석(MA) 대상 · 논문의 결과지표별로 GRADE 근거확실성을 산출</p>
       <input type="file" id="g-fileInput" accept="application/pdf" multiple style="display:none">
+      <input type="file" id="g-suppInput" accept="application/pdf,.docx" multiple style="display:none">
+    </div>
+    <div id="gFileListControls" class="form-row" style="display:none; margin-top:12px; align-items:center;">
+      <button id="gToggleAllPdfBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">원본 판독 전체 선택</button>
+      <span class="status" style="margin:0; align-self:center;">체크 시 Gemini가 PDF 원본을 직접 판독합니다(SoF표·forest plot 등). SR은 페이지가 많아 <b>토큰 소모·429 위험이 큽니다</b> — 표 판독이 필요한 논문만 켜세요.</span>
     </div>
     <ul id="g-fileList" class="file-list"></ul>
     <div class="form-row" style="margin-top:12px;">
@@ -1891,6 +1896,22 @@ function computeOutcomeGrade(o) {
 function gradeAbbr(grade) {
   return { 'High': 'H', 'Moderate': 'M', 'Low': 'L', 'Very low': 'VL' }[grade] || '';
 }
+// 검토자 수동 수정(override) 반영 등급: row.ov에 값이 있으면 그 영역을 덮어쓰고 최종등급 재계산
+function gRowGrade(row) {
+  const base = computeOutcomeGrade(row.o);
+  const ov = row.ov || {};
+  const domains = Object.assign({}, base.domains);
+  let overridden = false;
+  ['비뚤림위험', '비일관성', '비직접성', '비정밀성', '출판비뚤림'].forEach(k => { if (ov[k]) { domains[k] = ov[k]; overridden = true; } });
+  if (!overridden) return base;   // 수정 없으면 기존(저자/기관) 그대로
+  let down = 0; Object.values(domains).forEach(v => { if (v === '강등') down++; });
+  const computed = gradeByDowngrades(down);
+  return { domains, down, computed, finalGrade: computed, source: '수정' };
+}
+function gDomSelect(idx, domName, val) {
+  return `<select class="g-dom" data-idx="${idx}" data-dom="${domName}" style="font-size:11px;padding:2px 4px;border:1px solid #c8cdd4;border-radius:4px;background:#fff;">`
+    + ['유지', '강등', '판단불가'].map(o => `<option ${o === val ? 'selected' : ''}>${o}</option>`).join('') + '</select>';
+}
 
 // ---- evidence_review 연계용: hc_codes 목록 + 추천/헬퍼 ----
 const HC_CODES = [
@@ -1987,13 +2008,23 @@ gDropzone.addEventListener('dragover', e => { e.preventDefault(); gDropzone.clas
 gDropzone.addEventListener('dragleave', () => gDropzone.classList.remove('hover'));
 gDropzone.addEventListener('drop', e => { e.preventDefault(); gDropzone.classList.remove('hover'); gAddFiles(e.dataTransfer.files); });
 gFileInput.addEventListener('change', e => gAddFiles(e.target.files));
+const gSuppInput = document.getElementById('g-suppInput');
+let gSuppTargetIdx = -1;
+gSuppInput.addEventListener('change', e => {
+  if (gSuppTargetIdx < 0 || !gPendingFiles[gSuppTargetIdx]) return;
+  const arr = Array.from(e.target.files).filter(f => /\.(pdf|docx)$/i.test(f.name));
+  if (arr.length === 0) alert('보충자료는 PDF 또는 Word(.docx)만 지원합니다.');
+  arr.forEach(f => gPendingFiles[gSuppTargetIdx].supplements.push({ file: f, id: 's' + Date.now() + Math.random().toString(36).slice(2,5) }));
+  e.target.value = '';
+  gRenderFileList();
+});
 
 function gAddFiles(filelist) {
   const arr = Array.from(filelist).filter(f => f.type === 'application/pdf');
   if (arr.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
   for (const f of arr) {
     if (gPendingFiles.length >= 5) { alert('최대 5개까지 업로드 가능합니다.'); break; }
-    gPendingFiles.push({ file: f, id: 'g' + Date.now() + '_' + Math.random().toString(36).slice(2,7) });
+    gPendingFiles.push({ file: f, id: 'g' + Date.now() + '_' + Math.random().toString(36).slice(2,7), forcePdf: false, supplements: [] });
   }
   gRenderFileList();
 }
@@ -2001,14 +2032,42 @@ function gRenderFileList() {
   gFileListEl.innerHTML = '';
   gPendingFiles.forEach((entry, idx) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span>📄</span><span class="name">${escapeHTML(entry.file.name)}</span><span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span><button class="remove" data-idx="${idx}">삭제</button>`;
+    li.style.flexDirection = 'column'; li.style.alignItems = 'stretch';
+    const suppHtml = (entry.supplements || []).map((s, si) =>
+      `<div style="display:flex; align-items:center; gap:6px; margin-left:26px; margin-top:4px; font-size:12.5px; color:#4a5260;">📎 ${escapeHTML(s.file.name)}<button class="g-rm-supp" data-idx="${idx}" data-sidx="${si}" style="border:none;background:transparent;color:#b42318;cursor:pointer;padding:0 4px;">✕</button></div>`
+    ).join('');
+    li.innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span>📄</span><span class="name" style="flex:1;">${escapeHTML(entry.file.name)}</span>
+        <span class="size">${(entry.file.size/1024/1024).toFixed(2)} MB</span>
+        <label style="font-size:12px; color:#4a5260; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="체크 시 PDF 원본을 Gemini가 직접 판독합니다(SoF표·그림 포함). 토큰 소모가 큽니다.">
+          <input type="checkbox" class="g-force-pdf" data-idx="${idx}" ${entry.forcePdf ? 'checked' : ''}> 원본(표·그림) 판독
+        </label>
+        <button class="g-add-supp secondary" data-idx="${idx}" style="font-size:12px; padding:4px 9px;">＋보충자료</button>
+        <button class="remove" data-idx="${idx}">삭제</button>
+      </div>${suppHtml}`;
     gFileListEl.appendChild(li);
   });
   gFileListEl.querySelectorAll('.remove').forEach(btn => {
-    btn.addEventListener('click', e => { gPendingFiles.splice(parseInt(e.target.dataset.idx), 1); gRenderFileList(); });
+    btn.addEventListener('click', e => { gPendingFiles.splice(parseInt(e.currentTarget.dataset.idx), 1); gRenderFileList(); });
   });
+  gFileListEl.querySelectorAll('.g-add-supp').forEach(btn => {
+    btn.addEventListener('click', e => { gSuppTargetIdx = parseInt(e.currentTarget.dataset.idx); gSuppInput.click(); });
+  });
+  gFileListEl.querySelectorAll('.g-rm-supp').forEach(btn => {
+    btn.addEventListener('click', e => { gPendingFiles[+e.currentTarget.dataset.idx].supplements.splice(+e.currentTarget.dataset.sidx, 1); gRenderFileList(); });
+  });
+  gFileListEl.querySelectorAll('.g-force-pdf').forEach(cb => {
+    cb.addEventListener('change', e => { gPendingFiles[parseInt(e.target.dataset.idx)].forcePdf = e.target.checked; gUpdateToggleAllLabel(); });
+  });
+  document.getElementById('gFileListControls').style.display = gPendingFiles.length > 0 ? 'flex' : 'none';
+  gUpdateToggleAllLabel();
   gEvaluateBtn.disabled = gPendingFiles.length === 0;
 }
+const gToggleAllPdfBtn = document.getElementById('gToggleAllPdfBtn');
+function gAllForcePdf() { return gPendingFiles.length > 0 && gPendingFiles.every(e => e.forcePdf); }
+function gUpdateToggleAllLabel() { gToggleAllPdfBtn.textContent = gAllForcePdf() ? '원본 판독 전체 해제' : '원본 판독 전체 선택'; }
+gToggleAllPdfBtn.addEventListener('click', () => { const off = gAllForcePdf(); gPendingFiles.forEach(e => { e.forcePdf = !off; }); gRenderFileList(); });
 gClearBtn.addEventListener('click', () => { gPendingFiles = []; gRenderFileList(); });
 
 // =============================================================
@@ -2020,6 +2079,67 @@ const gResultsSection = document.getElementById('gResultsSection');
 const gResultsEl = document.getElementById('gResults');
 let gAllRows = []; // 평탄화된 결과 행 (지표별)
 
+// SR/UR 1편 GRADE 평가 (배치·재시도 공용)
+async function gExtractOne(entry, label, spaceBefore) {
+  const apiKey = localStorage.getItem(KEY_STORAGE);
+  if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return false; }
+  const li = document.getElementById('gprog_' + entry.id);
+  const setStep = (msg) => { const s = document.getElementById('gstep_' + entry.id); if (s) s.textContent = msg; };
+  li.innerHTML = `<span class="badge run">진행중</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size" id="gstep_${entry.id}">PDF 처리 중...</span>`;
+  try {
+    if (spaceBefore) { for (let left = 6; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기 (분당 한도 보호)...`); await sleep(1000); } }
+    const pdfText = await extractPdfText(entry.file);
+    const isScanned = pdfText.replace(/\s+/g, '').length < 300;
+    const tooLarge = entry.file.size > 18 * 1024 * 1024;
+    const usePdf = isScanned || (entry.forcePdf && !tooLarge);
+    setStep('Gemini GRADE 평가 요청 중...');
+    let userParts;
+    if (usePdf) {
+      const b64 = await fileToBase64(entry.file);
+      userParts = [{ text: `[SR/UR 논문(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고(스캔본이면 OCR) 표·그림(SoF표·forest plot 포함)을 판독해 평가하세요.` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
+    } else {
+      userParts = [{ text: `[SR/UR 논문: ${entry.file.name}]\n\n${pdfText}` }];
+    }
+    if (entry.supplements && entry.supplements.length) {
+      setStep(`본문 + 보충자료 ${entry.supplements.length}개 판독 중...`);
+      userParts[0].text += `\n※ 아래 첨부된 보충자료(supplementary)에 SoF표·부록·forest plot 등 GRADE 판정 근거(I²·n·비뚤림위험)가 있을 수 있으니 본문과 함께 읽으세요.`;
+      const suppParts = await buildSupplementParts(entry.supplements);
+      userParts = userParts.concat(suppParts);
+    }
+    const res = await callGeminiCore(apiKey, userParts, setStep, GRADE_SYSTEM_PROMPT);
+    // 재시도 시 같은 파일의 기존 행 제거(중복 방지)
+    gAllRows = gAllRows.filter(r => r.fileName !== entry.file.name);
+    if (res.is_review === false) {
+      gFailLi(entry, label, 'SR/UR/MA가 아닌 것으로 판단됨 — 표가 그림에 있으면 원본(표·그림) 판독을 켜고 다시 시도해 보세요.', '제외');
+      return false;
+    }
+    const outcomes = res.outcomes || [];
+    const paperName = res.paper || deriveTitle(entry.file.name);
+    outcomes.forEach(o => {
+      gAllRows.push({ paper: paperName, fileName: entry.file.name, reviewType: res.review_type || '', o, ov: {},
+        claimId: suggestClaimId(paperName), hcCode: suggestHcCode(o.functional, o.marker) });
+    });
+    if (outcomes.length === 0) {
+      gFailLi(entry, label, '결과지표 추출 0 — SoF표가 그림/표에 있을 수 있습니다. 원본(표·그림) 판독을 켜고 다시 시도하세요.', '지표 0');
+      return false;
+    }
+    li.innerHTML = `<span class="badge done">완료</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${outcomes.length}개</span>`;
+    return true;
+  } catch (err) {
+    console.error(err);
+    gFailLi(entry, label, err.message, '실패');
+    return false;
+  }
+}
+// 실패/제외/지표0 li + '다시 시도' 버튼 (해당 논문만 재평가, 완료분 유지)
+function gFailLi(entry, label, msg, badge) {
+  const li = document.getElementById('gprog_' + entry.id);
+  li.innerHTML = `<span class="badge fail">${badge}</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML((msg || '').slice(0,150))}</span> <button class="secondary g-retry" style="font-size:12px; padding:3px 10px; margin-left:8px;">↻ 다시 시도</button>`;
+  li.querySelector('.g-retry').addEventListener('click', async () => {
+    await gExtractOne(entry, label, false);
+    if (gAllRows.length > 0) { gResultsSection.style.display = 'block'; renderGradeResults(); }
+  });
+}
 gEvaluateBtn.addEventListener('click', async () => {
   const apiKey = localStorage.getItem(KEY_STORAGE);
   if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return; }
@@ -2040,40 +2160,7 @@ gEvaluateBtn.addEventListener('click', async () => {
   });
 
   for (let i = 0; i < targets.length; i++) {
-    const entry = targets[i];
-    const li = document.getElementById('gprog_' + entry.id);
-    const setStep = (msg) => { const s = document.getElementById('gstep_' + entry.id); if (s) s.textContent = msg; };
-    li.innerHTML = `<span class="badge run">진행중</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size" id="gstep_${entry.id}">PDF 처리 중...</span>`;
-    try {
-      const pdfText = await extractPdfText(entry.file);
-      const isScanned = pdfText.replace(/\s+/g, '').length < 300;
-      if (i > 0) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
-      setStep('Gemini GRADE 평가 요청 중...');
-      let userParts;
-      if (isScanned) {
-        const b64 = await fileToBase64(entry.file);
-        userParts = [{ text: `[SR/UR 논문(PDF 원본): ${entry.file.name}] 아래 PDF를 직접 읽고(스캔본이면 OCR) 평가하세요.` }, { inlineData: { mimeType: 'application/pdf', data: b64 } }];
-      } else {
-        userParts = [{ text: `[SR/UR 논문: ${entry.file.name}]\n\n${pdfText}` }];
-      }
-      const res = await callGeminiCore(apiKey, userParts, setStep, GRADE_SYSTEM_PROMPT);
-
-      if (res.is_review === false) {
-        li.innerHTML = `<span class="badge fail">제외</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">SR/UR/MA가 아닌 것으로 판단됨</span>`;
-        continue;
-      }
-      const outcomes = res.outcomes || [];
-      const paperName = res.paper || deriveTitle(entry.file.name);
-      outcomes.forEach(o => {
-        const g = computeOutcomeGrade(o);
-        gAllRows.push({ paper: paperName, reviewType: res.review_type || '', o, g,
-          claimId: suggestClaimId(paperName), hcCode: suggestHcCode(o.functional, o.marker) });
-      });
-      li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${outcomes.length}개</span>`;
-    } catch (err) {
-      console.error(err);
-      li.innerHTML = `<span class="badge fail">실패</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size err">${escapeHTML(err.message.slice(0,150))}</span>`;
-    }
+    await gExtractOne(targets[i], String(i + 1), i > 0);
   }
 
   gEvaluateBtn.disabled = false; gClearBtn.disabled = false;
@@ -2085,9 +2172,10 @@ gEvaluateBtn.addEventListener('click', async () => {
 // =============================================================
 function dgClass(v) { return 'dg-' + (v === '강등' ? '강등' : (v === '유지' ? '유지' : '판단불가')); }
 function gradeRemark(row) {
-  const o = row.o, g = row.g;
+  const o = row.o, g = gRowGrade(row);
   const parts = [];
   if (g.source === '저자') parts.push('저자 GRADE 채택(기관 산출: ' + g.computed.grade + ')');
+  else if (g.source === '수정') parts.push('검토자 수정(강등 ' + g.down + ')');
   else parts.push('기관 산출(강등 ' + g.down + ')');
   if (o.asian) parts.push('아시아인/아시아산 — 각주 대상');
   const dr = [];
@@ -2102,18 +2190,18 @@ function renderGradeResults() {
   cols.forEach(c => html += `<th>${c}</th>`);
   html += '</tr></thead><tbody>';
   gAllRows.forEach((row, i) => {
-    const o = row.o, g = row.g, d = g.domains;
+    const o = row.o, g = gRowGrade(row), d = g.domains;
     const gr = g.finalGrade.grade.replace(/\s/g, '');
     html += '<tr>'
       + `<td>${escapeHTML(row.paper)}</td>`
       + `<td>${escapeHTML(o.functional || '')}</td>`
       + `<td>${escapeHTML(o.marker || '')}</td>`
       + `<td>${escapeHTML((o.included_designs || '') + (o.n_studies ? ' ' + o.n_studies + '편' : ''))}</td>`
-      + `<td class="c ${dgClass(d.비뚤림위험)}">${d.비뚤림위험}</td>`
-      + `<td class="c ${dgClass(d.비일관성)}">${d.비일관성}</td>`
-      + `<td class="c ${dgClass(d.비직접성)}">${d.비직접성}</td>`
-      + `<td class="c ${dgClass(d.비정밀성)}">${d.비정밀성}</td>`
-      + `<td class="c ${dgClass(d.출판비뚤림)}">${d.출판비뚤림}</td>`
+      + `<td class="c ${dgClass(d.비뚤림위험)}">${gDomSelect(i,'비뚤림위험',d.비뚤림위험)}</td>`
+      + `<td class="c ${dgClass(d.비일관성)}">${gDomSelect(i,'비일관성',d.비일관성)}</td>`
+      + `<td class="c ${dgClass(d.비직접성)}">${gDomSelect(i,'비직접성',d.비직접성)}</td>`
+      + `<td class="c ${dgClass(d.비정밀성)}">${gDomSelect(i,'비정밀성',d.비정밀성)}</td>`
+      + `<td class="c ${dgClass(d.출판비뚤림)}">${gDomSelect(i,'출판비뚤림',d.출판비뚤림)}</td>`
       + `<td class="c"><span class="grade-pill grade-${gr}">${g.finalGrade.tier} ${g.finalGrade.stars}</span><br><span style="font-size:11px;color:#6b7480;">${g.finalGrade.grade}</span></td>`
       + `<td class="c">${o.i2 != null ? o.i2 + '%' : '-'}</td>`
       + `<td class="c">${o.n_participants != null ? o.n_participants : '-'}</td>`
@@ -2133,6 +2221,13 @@ function renderGradeResults() {
   gResultsEl.querySelectorAll('.g-hccode').forEach(sel => {
     sel.addEventListener('change', e => { gAllRows[parseInt(e.target.dataset.idx)].hcCode = e.target.value; });
   });
+  gResultsEl.querySelectorAll('.g-dom').forEach(sel => {
+    sel.addEventListener('change', e => {
+      const row = gAllRows[parseInt(e.target.dataset.idx)];
+      row.ov = row.ov || {}; row.ov[e.target.dataset.dom] = e.target.value;
+      renderGradeResults();
+    });
+  });
 }
 function sigLabel(s) {
   return { significant: '유의', not_significant: '비유의', inconsistent: '불일치', narrative_only: '서술만' }[s] || (s || '');
@@ -2151,7 +2246,7 @@ function downloadGradeExcel() {
   const header = ['논문','기능성','시험항목','근거','비뚤림위험','비일관성','비직접성','비정밀성','출판비뚤림','최종 등급','등급(약어)','I²','n수','아시아 포함','유의성','GRADE 출처','비고'];
   const aoa = [header];
   gAllRows.forEach(row => {
-    const o = row.o, g = row.g, d = g.domains;
+    const o = row.o, g = gRowGrade(row), d = g.domains;
     aoa.push([
       row.paper, o.functional || '', o.marker || '',
       (o.included_designs || '') + (o.n_studies ? ' ' + o.n_studies + '편' : ''),
@@ -2241,14 +2336,15 @@ function downloadEvidenceExcel() {
   gAllRows.forEach(r => {
     const id = (r.claimId || '').trim();
     order[id] = (order[id] || 0) + 1;
+    const rg = gRowGrade(r);
     gmAoa.push([
       id,
       r.o.marker || '',
-      r.g.finalGrade.grade,
+      rg.finalGrade.grade,
       r.o.significance || '',
       order[id],
       r.hcCode || '',
-      r.g.source === '저자' ? 'author' : 'institution'
+      rg.source === '저자' ? 'author' : (rg.source === '수정' ? 'reviewer' : 'institution')
     ]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(gmAoa);
