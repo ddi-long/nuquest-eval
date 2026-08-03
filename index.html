@@ -686,14 +686,18 @@
       <input type="file" id="m-fileInput" accept="application/pdf" multiple style="display:none">
       <input type="file" id="m-suppInput" accept="application/pdf,.docx" multiple style="display:none">
     </div>
+    <div class="form-row" style="margin-top:10px; align-items:center;">
+      <button id="mLoadFromNuquestBtn" class="secondary" style="font-size:12.5px; padding:6px 12px;">⬇ ① NUQUEST에 첨부한 논문 그대로 불러오기</button>
+      <span class="status" style="margin:0; align-self:center;" id="mCarryStatus">① 탭에서 <b>➡ GRADE 비뚤림위험으로 넘기기</b>를 누르면 그때 첨부한 논문(보충자료 포함)을 다시 첨부 없이 불러올 수 있습니다.</span>
+    </div>
     <ul id="m-fileList" class="file-list"></ul>
     <div class="form-row" style="margin-top:12px; align-items:center;">
       <label for="mTargetInput" style="font-size:13px; color:#4a5260; align-self:center; white-space:nowrap;">목표 지표 (선택)</label>
-      <input type="text" id="mTargetInput" placeholder="예: contrast sensitivity, LDL — 쉼표로 구분" style="flex:1; min-width:200px; padding:8px 12px; border:1px solid #c8cdd4; border-radius:6px; font-size:14px; font-family:inherit;">
+      <input type="text" id="mTargetInput" placeholder="예: Intraocular pressure(IOP), LDL — 쉼표로 구분" style="flex:1; min-width:200px; padding:8px 12px; border:1px solid #c8cdd4; border-radius:6px; font-size:14px; font-family:inherit;">
       <label style="font-size:13px; color:#4a5260; align-self:center; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="mOnlyTarget"> 지정 지표만 추출</label>
     </div>
     <p class="hint" style="font-size:12px; color:#6b7480; margin:4px 0 10px;">
-      지정하면 논문마다 다른 이름(예: MCS = mesopic contrast sensitivity)을 <b>이 지표로 통일</b>해 추출합니다. <b>'지정 지표만 추출'</b>을 켜면 그 지표만 뽑고 나머지는 무시합니다(비우면 전체 추출).
+      지정하면 논문마다 다른 이름(예: MCS = mesopic contrast sensitivity)을 <b>이 지표로 통일</b>해 추출합니다. <b>약어는 <code>정식명(약어)</code> 형태로 함께 적으면 탐색에 유리</b>합니다(예: Intraocular pressure(IOP) → IOP·정식명 모두 인식). <b>'지정 지표만 추출'</b>을 켜면 그 지표만 뽑고 나머지는 무시합니다(비우면 전체 추출).
     </p>
     <div class="form-row">
       <button id="mEvaluateBtn" disabled>추출 시작</button>
@@ -1550,6 +1554,7 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
 
 // NUQUEST 결과 → GRADE 비뚤림위험 연계용 저장 (파일명 기준, 기관·NUQUEST 총점)
 const NUQUEST_FOR_GRADE = 'nuquest_for_grade_v1';
+let carriedFiles = [];  // ①에서 ②로 재첨부 없이 넘길 실제 File 객체 스냅샷
 document.getElementById('sendToGradeBtn').addEventListener('click', () => {
   if (allResults.length === 0) { alert('먼저 평가를 실행하세요.'); return; }
   let store = {};
@@ -1558,7 +1563,15 @@ document.getElementById('sendToGradeBtn').addEventListener('click', () => {
     store[r.fileName] = { gigwan: r.scoreA, nuquest: r.scoreB, title: r.paperTitle };
   });
   localStorage.setItem(NUQUEST_FOR_GRADE, JSON.stringify(store));
-  alert(allResults.length + '편의 NUQUEST 등급을 저장했습니다.\n② GRADE·개별 RCT 탭에서 같은 파일명의 논문을 추출하면 비뚤림위험에 자동 반영됩니다. (결과는 누적되며, 다시 넘기면 갱신)');
+  // 평가한 논문의 실제 파일(+보충자료)을 스냅샷 → ②에서 재첨부 없이 불러오기
+  const evaluated = new Set(allResults.map(r => r.fileName));
+  carriedFiles = pendingFiles
+    .filter(e => evaluated.has(e.file.name))
+    .map(e => ({ file: e.file, supplements: (e.supplements || []).map(s => ({ file: s.file })) }));
+  const carryMsg = carriedFiles.length
+    ? `\n\n② GRADE·개별 RCT 탭의 “⬇ ① NUQUEST에 첨부한 논문 그대로 불러오기”를 누르면 ${carriedFiles.length}편을 재첨부 없이 불러올 수 있습니다.`
+    : '';
+  alert(allResults.length + '편의 NUQUEST 등급을 저장했습니다.\n② GRADE·개별 RCT 탭에서 같은 파일명의 논문을 추출하면 비뚤림위험에 자동 반영됩니다. (결과는 누적되며, 다시 넘기면 갱신)' + carryMsg);
 });
 
 // =============================================================
@@ -2285,6 +2298,30 @@ const EXTRACT_SYSTEM_PROMPT = `당신은 메타분석 데이터 추출 전문가
 const ARM_FIELDS = ['n','change_mean','change_sd','before_mean','before_sd','before_se','before_ci_l','before_ci_u','after_mean','after_sd','after_se','after_ci_l','after_ci_u'];
 const NUM = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? '' : Number(v);
 
+// 목표 지표 파싱: "Intraocular pressure(IOP)" → {display, syns:['intraocular pressure(iop)','intraocular pressure','iop']}
+function parseTargetGroups(str) {
+  return (str || '').split(',').map(s => s.trim()).filter(Boolean).map(raw => {
+    const syns = new Set([raw.toLowerCase()]);
+    const m = raw.match(/^(.*?)[\(（]\s*([^)）]+?)\s*[\)（）]?\s*$/);
+    if (m) { const a = m[1].trim().toLowerCase(), b = m[2].trim().toLowerCase(); if (a) syns.add(a); if (b) syns.add(b); }
+    return { display: raw, syns: [...syns].filter(Boolean) };
+  });
+}
+function matchesTargetGroups(variable, groups) {
+  const v = (variable || '').toLowerCase().trim();
+  if (!v) return false;
+  return groups.some(g => g.syns.some(syn => {
+    if (v === syn) return true;
+    if (syn.length >= 5 && v.includes(syn)) return true;   // 긴 정식명: 부분일치 허용
+    if (v.length >= 5 && syn.includes(v)) return true;      // 변수명이 정식명의 일부
+    if (syn.length < 5) {                                   // 짧은 약어: 단어경계 매칭(biopsy⊃iop 오탐 방지)
+      const re = new RegExp('(^|[^a-z0-9])' + syn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)');
+      return re.test(v);
+    }
+    return false;
+  }));
+}
+
 // 파일 관리
 let mPendingFiles = [];
 let mExtractRows = [];  // 누적 (지표별 comparison 단위)
@@ -2310,6 +2347,25 @@ function mAddFiles(filelist) {
   }
   mRenderFileList();
 }
+// ①에서 넘긴 논문(+보충자료)을 재첨부 없이 불러오기
+document.getElementById('mLoadFromNuquestBtn').addEventListener('click', () => {
+  const statusEl = document.getElementById('mCarryStatus');
+  if (!carriedFiles.length) { alert('먼저 ① NUQUEST·개별 RCT 탭에서 논문을 평가한 뒤 “➡ GRADE 비뚤림위험으로 넘기기”를 눌러 주세요.'); return; }
+  let added = 0, skipped = 0;
+  carriedFiles.forEach(c => {
+    if (mPendingFiles.length >= 30) { skipped++; return; }
+    const dup = mPendingFiles.some(e => e.file.name === c.file.name && e.file.size === c.file.size);
+    if (dup) { skipped++; return; }
+    mPendingFiles.push({
+      file: c.file,
+      id: 'm' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      supplements: (c.supplements || []).map(s => ({ file: s.file, id: 's' + Date.now() + Math.random().toString(36).slice(2,5) }))
+    });
+    added++;
+  });
+  mRenderFileList();
+  statusEl.innerHTML = `✅ ${added}편 불러옴${skipped ? ` · ${skipped}편 건너뜀(중복/한도)` : ''}. 목표 지표를 입력하고 <b>추출 시작</b>을 누르세요.`;
+});
 let mSuppTargetIdx = -1;
 function mRenderFileList() {
   mFileListEl.innerHTML = '';
@@ -2404,7 +2460,7 @@ mEvaluateBtn.addEventListener('click', async () => {
     try {
       if (i > 0) { for (let left = 4; left > 0; left--) { setStep(`다음 요청까지 ${left}초 대기...`); await sleep(1000); } }
       const targetLine = mTargets
-        ? `\n[목표 지표] ${mOnlyTargets ? '오직 다음 지표(들)만 추출하고 나머지 지표는 모두 무시하세요' : '특히 다음 지표(들)의 데이터를 우선 추출하고(목표 지표 외 다른 지표도 함께 추출)'}. 논문에서 다른 이름(예: MCS = mesopic contrast sensitivity)으로 불려도 이 목표 지표로 매핑하여 variable에 목표 지표명으로 통일하세요: ${mTargets}.`
+        ? `\n[목표 지표] ${mOnlyTargets ? '오직 다음 지표(들)만 추출하고 나머지 지표는 모두 무시하세요' : '특히 다음 지표(들)의 데이터를 우선 추출하고(목표 지표 외 다른 지표도 함께 추출)'}. 각 목표 지표에서 괄호 안 약어와 정식명은 같은 지표입니다(예: "Intraocular pressure(IOP)"는 IOP와 동일). 논문에서 정식명·약어·다른 이름(예: MCS = mesopic contrast sensitivity) 어느 쪽으로 불려도 이 목표 지표로 매핑하고, variable에는 목표 지표 표기를 괄호 약어까지 그대로 사용해 통일하세요: ${mTargets}.`
         : '';
       // 데이터가 표·그림에 있으므로 PDF 원본을 직접 판독(대용량만 텍스트 대체)
       let userParts;
@@ -2426,13 +2482,10 @@ mEvaluateBtn.addEventListener('click', async () => {
       }
       const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
       let comps = res.comparisons || [];
-      // '지정 지표만 추출' 강제 필터 (모델이 초과 추출해도 도구가 걸러냄)
+      // '지정 지표만 추출' 강제 필터 (모델이 초과 추출해도 도구가 걸러냄) — 약어/정식명 동의어 매칭
       if (mOnlyTargets && mTargets) {
-        const tl = mTargets.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-        comps = comps.filter(cmp => {
-          const v = (cmp.variable || '').toLowerCase();
-          return tl.some(t => t && (v === t || v.includes(t)));  // 변수명이 목표를 포함(모델이 목표명으로 통일했을 때)
-        });
+        const groups = parseTargetGroups(mTargets);
+        comps = comps.filter(cmp => matchesTargetGroups(cmp.variable, groups));
       }
       const sid = res.study_id || deriveTitle(entry.file.name);
       comps.forEach(cmp => {
