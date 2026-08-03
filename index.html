@@ -2674,6 +2674,46 @@ function armKeyVal(a) {
   if (a.before_mean != null && a.before_mean !== '') return a.before_mean;
   return '-';
 }
+// arm 행 편집: 대표 값형태(변화량/종료값/기저값) 결정 + 선택 UI
+const VTYPE_LABEL = { change: 'Δ변화량', after: '종료값', before: '기저값' };
+function primaryVType(a) {
+  a = a || {};
+  if (a.change_mean != null && a.change_mean !== '') return 'change';
+  if (a.after_mean != null && a.after_mean !== '') return 'after';
+  if (a.before_mean != null && a.before_mean !== '') return 'before';
+  return 'after';
+}
+function vtypeSelect(uid, cur) {
+  return `<select class="m-vtype" data-uid="${uid}" style="font-size:11px;padding:2px;border:1px solid #c8cdd4;border-radius:4px;background:#fff;">`
+    + ['change', 'after', 'before'].map(t => `<option value="${t}" ${t === cur ? 'selected' : ''}>${VTYPE_LABEL[t]}</option>`).join('') + '</select>';
+}
+function armInput(uid, side, field, val, ph) {
+  return `<input class="m-armval" data-uid="${uid}" data-side="${side}" data-field="${field}" value="${(val == null || val === '') ? '' : val}" placeholder="${ph || ''}" style="width:54px;padding:2px 4px;border:1px solid #c8cdd4;border-radius:4px;font-size:11px;">`;
+}
+function txtInput(uid, key, val, w, ph) {
+  return `<input class="m-armtxt" data-uid="${uid}" data-key="${key}" value="${escapeHTML(val || '')}" placeholder="${ph || ''}" style="width:${w||90}px;padding:2px 4px;border:1px solid #c8cdd4;border-radius:4px;font-size:11px;">`;
+}
+// 수동 지표 행 추가 (예: Kalt처럼 표가 특이해 자동추출이 0인 경우)
+function addManualRow() {
+  const store = loadNuquestStore();
+  const names = Object.keys(store);
+  const sid = (prompt('논문(Study) 이름을 입력하세요. NUQUEST 연계를 원하면 정확한 파일명 또는 저장된 이름 사용.' + (names.length ? '\n\n① 넘긴 논문: ' + names.join(', ') : ''), names[0] || '') || '').trim();
+  if (!sid) return;
+  const v = (prompt('지표(Variable) 이름 (예: contrast sensitivity)', '') || '').trim();
+  if (!v) return;
+  const arm = (prompt('구분(arm/하위그룹) — 용량·시점·하위그룹 등 (없으면 빈칸)', '') || '').trim();
+  const unit = (prompt('단위 (예: dB, log units, %) — 없으면 빈칸', '') || '').trim();
+  // fileName: 입력한 sid가 NUQUEST 저장 키와 정확히 같으면 연계됨
+  const fileName = store[sid] ? sid : (names.find(n => n.replace(/\.pdf$/i,'') === sid) || sid);
+  mExtractRows.push({
+    uid: 'x' + (mRowSeq++), manual: true,
+    study_id: sid, arm_label: arm, study: arm ? (sid + '_' + arm) : sid, fileName: fileName,
+    design: 'parallel', asian_eth: false, asian_var: false,
+    variable: v, unit: unit,
+    t: { n: '', after_mean: '', after_sd: '' }, c: { n: '', after_mean: '', after_sd: '' }
+  });
+  renderExtractSummary();
+}
 function renderExtractSummary() {
   let summ = computeExtractSummary(mExtractRows.filter(r => !mExcludedRows.has(r.uid)));
   const totalVars = summ.length;
@@ -2699,7 +2739,7 @@ function renderExtractSummary() {
     + `<button id="mSelAllBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">${allVisSel ? '표시 지표 전체 해제' : '표시 지표 전체 선택'}</button>`
     + '<label style="font-size:12.5px; color:#4a5260; display:inline-flex; align-items:center; gap:4px;">비뚤림위험 기준: '
     + `<select id="mRobBasis" style="font-size:12.5px; padding:4px 6px; border:1px solid #c8cdd4; border-radius:5px;"><option value="nuquest" ${mRobBasis==='nuquest'?'selected':''}>NUQUEST 총점</option><option value="gigwan" ${mRobBasis==='gigwan'?'selected':''}>기관 총점</option></select></label>`
-    + (multiArm.length ? `<button id="mAutoRepBtn" class="secondary" style="font-size:12.5px; padding:5px 12px; background:#eef6ff;">✦ 대표 하위그룹 자동 선택</button><button id="mAllArmBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">모든 arm 포함</button>` : '')
+    + (multiArm.length ? `<button id="mAutoRepBtn" class="secondary" style="font-size:12.5px; padding:5px 12px; background:#eef6ff;">✦ 대표 하위그룹 자동 선택</button>` : '')
     + `<span class="status" style="margin:0;">NUQUEST 연계 ${nqCount}편 저장됨 · 체크 지표만 엑셀 포함</span>`
     + '</div>'
     + '<div class="grade-table-wrap"><table class="grade-table"><thead><tr><th></th>';
@@ -2730,39 +2770,79 @@ function renderExtractSummary() {
       + '</tr>';
   });
   html += '</tbody></table></div>';
-  // ---- 하위그룹(arm) 선택 상세 ----
-  if (multiArm.length) {
-    html += '<div style="margin-top:16px;">'
-      + '<div style="font-weight:600; font-size:13px; color:#2c3540; margin-bottom:6px;">하위그룹(arm) 선택 — 같은 논문·지표에서 여러 행이 추출된 경우 대표만 남기세요</div>'
-      + '<div class="grade-table-wrap"><table class="grade-table"><thead><tr>'
-      + '<th>포함</th><th>Study</th><th>지표</th><th>구분(arm)</th><th>중재 n</th><th>대조 n</th><th>중재값</th><th>대조값</th></tr></thead><tbody>';
-    multiArm.forEach(([k, rows]) => {
-      rows.forEach((r, ri) => {
-        html += '<tr' + (ri === 0 ? ' style="border-top:2px solid #b8c0cc;"' : '') + '>'
-          + `<td class="c"><input type="checkbox" class="m-row-chk" data-uid="${r.uid}" ${!mExcludedRows.has(r.uid) ? 'checked' : ''}></td>`
-          + `<td>${escapeHTML(r.study_id || r.study)}</td>`
-          + `<td>${escapeHTML(r.variable || '')}</td>`
-          + `<td>${escapeHTML(r.arm_label || '(구분없음)')}</td>`
-          + `<td class="c">${NUM(r.t.n)}</td>`
-          + `<td class="c">${NUM(r.c.n)}</td>`
-          + `<td class="c">${escapeHTML(String(armKeyVal(r.t)))}</td>`
-          + `<td class="c">${escapeHTML(String(armKeyVal(r.c)))}</td>`
-          + '</tr>';
-      });
+  // ---- 하위그룹(arm) 선택·편집 상세 ----
+  const manualRows = mExtractRows.filter(r => r.manual);
+  const showUids = new Set();
+  multiArm.forEach(([k, rows]) => rows.forEach(r => showUids.add(r.uid)));
+  manualRows.forEach(r => showUids.add(r.uid));
+  const armRows = mExtractRows.filter(r => showUids.has(r.uid));
+  html += '<div style="margin-top:16px;">'
+    + '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">'
+    + '<span style="font-weight:600; font-size:13px; color:#2c3540;">하위그룹(arm) 선택·편집 — 대표만 남기거나 값을 직접 수정/추가하세요</span>'
+    + '<button id="mArmAllBtn" class="secondary" style="font-size:12px; padding:4px 10px;">전체 선택</button>'
+    + '<button id="mArmNoneBtn" class="secondary" style="font-size:12px; padding:4px 10px;">전체 해제</button>'
+    + '<button id="mArmAddBtn" class="secondary" style="font-size:12px; padding:4px 10px; background:#eef6ff;">＋ 지표 수동 추가</button>'
+    + '<button id="mArmApplyBtn" style="font-size:12px; padding:4px 12px;">✔ 선택·수정 반영</button>'
+    + '</div>';
+  if (armRows.length) {
+    html += '<div class="grade-table-wrap"><table class="grade-table" id="mArmTable"><thead><tr>'
+      + '<th>포함</th><th>Study</th><th>지표</th><th>구분(arm)</th><th>값형태</th>'
+      + '<th>중재 n</th><th>중재 mean</th><th>중재 SD</th><th>대조 n</th><th>대조 mean</th><th>대조 SD</th><th></th></tr></thead><tbody>';
+    let prevKey = null;
+    armRows.forEach(r => {
+      const key = (r.study_id || r.study) + '' + (r.variable || '');
+      const brd = (prevKey !== null && key !== prevKey) ? ' style="border-top:2px solid #b8c0cc;"' : ''; prevKey = key;
+      const vt = primaryVType(r.t.change_mean != null && r.t.change_mean !== '' ? r.t : (r.t.after_mean != null && r.t.after_mean !== '' ? r.t : (r.c || r.t)));
+      const mf = vt + '_mean', sf = vt + '_sd';
+      html += '<tr' + brd + '>'
+        + `<td class="c"><input type="checkbox" class="m-row-chk" data-uid="${r.uid}" ${!mExcludedRows.has(r.uid) ? 'checked' : ''}></td>`
+        + `<td>${r.manual ? txtInput(r.uid,'study_id',r.study_id,90) : escapeHTML(r.study_id || r.study)}${r.manual ? ' <span style="font-size:10px;color:#2563eb;">수동</span>' : ''}</td>`
+        + `<td>${r.manual ? txtInput(r.uid,'variable',r.variable,120) : escapeHTML(r.variable || '')}</td>`
+        + `<td>${r.manual ? txtInput(r.uid,'arm_label',r.arm_label,80) : escapeHTML(r.arm_label || '(구분없음)')}</td>`
+        + `<td class="c">${vtypeSelect(r.uid, vt)}</td>`
+        + `<td class="c">${armInput(r.uid,'t','n',NUM(r.t.n),'n')}</td>`
+        + `<td class="c">${armInput(r.uid,'t','mean',r.t[mf],'mean')}</td>`
+        + `<td class="c">${armInput(r.uid,'t','sd',r.t[sf],'SD')}</td>`
+        + `<td class="c">${armInput(r.uid,'c','n',NUM(r.c.n),'n')}</td>`
+        + `<td class="c">${armInput(r.uid,'c','mean',r.c[mf],'mean')}</td>`
+        + `<td class="c">${armInput(r.uid,'c','sd',r.c[sf],'SD')}</td>`
+        + `<td class="c">${r.manual ? `<button class="m-row-del" data-uid="${r.uid}" style="border:none;background:transparent;color:#b42318;cursor:pointer;">✕</button>` : ''}</td>`
+        + '</tr>';
     });
-    html += '</tbody></table></div>'
-      + '<p class="hint" style="font-size:11.5px; color:#6b7480; margin:6px 0 0;">✦ 자동 선택 규칙: <b>시점</b>=최종 시점만(단·장기 시험으로 나뉜 경우는 둘 다) · <b>농도</b>=모두 포함 · <b>눈</b>=양안&gt;우세&gt;비우세&gt;우안&gt;좌안 중 하나. 체크박스로 수동 조정할 수 있습니다.</p></div>';
+    html += '</tbody></table></div>';
+  } else {
+    html += '<p class="hint" style="font-size:12px; color:#6b7480; margin:0;">여러 행으로 나뉜 지표가 없습니다. 표가 특이해 자동 추출이 안 된 지표는 <b>＋ 지표 수동 추가</b>로 입력하세요.</p>';
   }
+  html += '<p class="hint" style="font-size:11.5px; color:#6b7480; margin:6px 0 0;">✦ 자동 선택 규칙: <b>시점</b>=최종 시점만(단·장기 시험은 둘 다) · <b>농도</b>=모두 포함 · <b>눈</b>=양안&gt;우세&gt;비우세&gt;우안&gt;좌안 중 하나. 값 수정 후 <b>✔ 선택·수정 반영</b>을 눌러야 위 요약·엑셀에 적용됩니다. <b>값형태</b>=mean/SD를 어느 값(변화량·종료값·기저값)으로 저장할지 선택.</p></div>';
   html += '</div>';
   const el = document.getElementById('mResults');
   el.innerHTML = html;
   document.getElementById('mFilterInput').addEventListener('input', e => { mFilterText = e.target.value; renderExtractSummary(); });
   document.getElementById('mRobBasis').addEventListener('change', e => { mRobBasis = e.target.value; renderExtractSummary(); });
-  if (multiArm.length) {
-    const ab = document.getElementById('mAutoRepBtn'); if (ab) ab.addEventListener('click', autoSelectRepresentative);
-    const bb = document.getElementById('mAllArmBtn'); if (bb) bb.addEventListener('click', () => { mExcludedRows = new Set(); renderExtractSummary(); });
-    el.querySelectorAll('.m-row-chk').forEach(cb => cb.addEventListener('change', e => { const u = e.target.dataset.uid; if (e.target.checked) mExcludedRows.delete(u); else mExcludedRows.add(u); renderExtractSummary(); }));
+  const arB = document.getElementById('mAutoRepBtn'); if (arB) arB.addEventListener('click', autoSelectRepresentative);
+  // arm 편집 반영: 체크 → 제외집합, 입력값 → 행 객체 (일괄 커밋 후 재렌더)
+  function applyArmEdits() {
+    const rowByUid = {}; mExtractRows.forEach(r => rowByUid[r.uid] = r);
+    el.querySelectorAll('#mArmTable .m-row-chk').forEach(cb => { const u = cb.dataset.uid; if (cb.checked) mExcludedRows.delete(u); else mExcludedRows.add(u); });
+    el.querySelectorAll('#mArmTable .m-armtxt').forEach(inp => { const r = rowByUid[inp.dataset.uid]; if (r) { r[inp.dataset.key] = inp.value.trim(); r.study = r.arm_label ? (r.study_id + '_' + r.arm_label) : r.study_id; } });
+    el.querySelectorAll('#mArmTable tr').forEach(tr => {
+      const chk = tr.querySelector('.m-row-chk'); if (!chk) return;
+      const r = rowByUid[chk.dataset.uid]; if (!r) return;
+      const vt = (tr.querySelector('.m-vtype') || {}).value || 'after';
+      tr.querySelectorAll('.m-armval').forEach(inp => {
+        const side = inp.dataset.side, field = inp.dataset.field, val = inp.value.trim();
+        const obj = side === 't' ? r.t : r.c;
+        if (field === 'n') obj.n = val === '' ? '' : Number(val);
+        else obj[vt + '_' + (field === 'mean' ? 'mean' : 'sd')] = val === '' ? '' : Number(val);
+      });
+    });
+    renderExtractSummary();
   }
+  const apB = document.getElementById('mArmApplyBtn'); if (apB) apB.addEventListener('click', applyArmEdits);
+  const alB = document.getElementById('mArmAllBtn'); if (alB) alB.addEventListener('click', () => { el.querySelectorAll('#mArmTable .m-row-chk').forEach(cb => cb.checked = true); });
+  const nnB = document.getElementById('mArmNoneBtn'); if (nnB) nnB.addEventListener('click', () => { el.querySelectorAll('#mArmTable .m-row-chk').forEach(cb => cb.checked = false); });
+  const adB = document.getElementById('mArmAddBtn'); if (adB) adB.addEventListener('click', addManualRow);
+  el.querySelectorAll('.m-row-del').forEach(b => b.addEventListener('click', e => { const u = e.currentTarget.dataset.uid; mExtractRows = mExtractRows.filter(r => r.uid !== u); renderExtractSummary(); }));
   el.querySelectorAll('th[data-key]').forEach(th => { const k = th.dataset.key; th.addEventListener('click', () => { if (mSortKey === k) mSortDir = -mSortDir; else { mSortKey = k; mSortDir = 1; } renderExtractSummary(); }); });
   el.querySelectorAll('.m-var-chk').forEach(cb => cb.addEventListener('change', e => { const v = e.target.dataset.var; if (e.target.checked) mExcludedVars.delete(v); else mExcludedVars.add(v); renderExtractSummary(); }));
   el.querySelectorAll('.m-i2').forEach(inp => inp.addEventListener('change', e => { mGradeState(e.target.dataset.var).i2 = e.target.value.trim(); renderExtractSummary(); }));
