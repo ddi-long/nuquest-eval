@@ -2770,6 +2770,14 @@ function armKeyVal(a) {
   if (a.before_mean != null && a.before_mean !== '') return a.before_mean;
   return '-';
 }
+// R_data용 대표 mean/sd (변화량>종료값>기저값 우선) + 어떤 값인지 type
+function rArmVals(a) {
+  a = a || {};
+  if (a.change_mean != null && a.change_mean !== '') return { m: NUM(a.change_mean), s: NUM(a.change_sd), type: 'change' };
+  if (a.after_mean != null && a.after_mean !== '') return { m: NUM(a.after_mean), s: NUM(a.after_sd), type: 'endpoint' };
+  if (a.before_mean != null && a.before_mean !== '') return { m: NUM(a.before_mean), s: NUM(a.before_sd), type: 'baseline' };
+  return { m: '', s: '', type: '' };
+}
 // arm 행 편집: 대표 값형태(변화량/종료값/기저값) 결정 + 선택 UI
 const VTYPE_LABEL = { change: 'Δ변화량', after: '종료값', before: '기저값' };
 function primaryVType(a) {
@@ -2790,17 +2798,24 @@ function txtInput(uid, key, val, w, ph) {
   return `<input class="m-armtxt" data-uid="${uid}" data-key="${key}" value="${escapeHTML(val || '')}" placeholder="${ph || ''}" style="width:${w||90}px;padding:2px 4px;border:1px solid #c8cdd4;border-radius:4px;font-size:11px;">`;
 }
 // 수동 지표 행 추가 (예: Kalt처럼 표가 특이해 자동추출이 0인 경우)
-function addManualRow() {
-  const store = loadNuquestStore();
-  const names = Object.keys(store);
-  const sid = (prompt('논문(Study) 이름을 입력하세요. NUQUEST 연계를 원하면 정확한 파일명 또는 저장된 이름 사용.' + (names.length ? '\n\n① 넘긴 논문: ' + names.join(', ') : ''), names[0] || '') || '').trim();
-  if (!sid) return;
-  const v = (prompt('지표(Variable) 이름 (예: contrast sensitivity)', '') || '').trim();
-  if (!v) return;
-  const arm = (prompt('구분(arm/하위그룹) — 용량·시점·하위그룹 등 (없으면 빈칸)', '') || '').trim();
-  const unit = (prompt('단위 (예: dB, log units, %) — 없으면 빈칸', '') || '').trim();
-  // fileName: 입력한 sid가 NUQUEST 저장 키와 정확히 같으면 연계됨
-  const fileName = store[sid] ? sid : (names.find(n => n.replace(/\.pdf$/i,'') === sid) || sid);
+// 수동 행 추가 폼 상태 (팝업 대신 표 아래 인라인 폼)
+let mAddOpen = false, mAddDraft = { study: '', variable: '', unit: '' };
+// 넘어온/기존 논문 목록 (Study 선택용)
+function mKnownStudies() {
+  const set = new Set(Object.keys(loadNuquestStore()));
+  (typeof carriedFiles !== 'undefined' ? carriedFiles : []).forEach(c => { if (c && c.file) set.add(c.file.name); });
+  mExtractRows.forEach(r => { if (r.study_id) set.add(r.study_id); if (r.fileName) set.add(r.fileName); });
+  return [...set].filter(Boolean);
+}
+function mConfirmAddRow() {
+  const el = document.getElementById('mResults');
+  const sid = (el.querySelector('#mAddStudy').value || '').trim();
+  const v = (el.querySelector('#mAddVar').value || '').trim();
+  const arm = (el.querySelector('#mAddArm').value || '').trim();
+  const unit = (el.querySelector('#mAddUnit').value || '').trim();
+  if (!sid || !v) { alert('Study(논문)와 지표(variable)는 필수입니다.'); return; }
+  const store = loadNuquestStore(), names = Object.keys(store);
+  const fileName = store[sid] ? sid : (names.find(n => n.replace(/\.pdf$/i, '') === sid) || sid);
   mExtractRows.push({
     uid: 'x' + (mRowSeq++), manual: true,
     study_id: sid, arm_label: arm, study: arm ? (sid + '_' + arm) : sid, fileName: fileName,
@@ -2808,6 +2823,8 @@ function addManualRow() {
     variable: v, unit: unit,
     t: { n: '', after_mean: '', after_sd: '' }, c: { n: '', after_mean: '', after_sd: '' }
   });
+  mAddDraft = { study: sid, variable: v, unit: unit };  // 같은 논문·지표로 arm만 바꿔 연속 추가하기 편하게 유지
+  mAddOpen = true;
   renderExtractSummary();
 }
 function renderExtractSummary() {
@@ -2909,6 +2926,22 @@ function renderExtractSummary() {
   } else {
     html += '<p class="hint" style="font-size:12px; color:#6b7480; margin:0;">여러 행으로 나뉜 지표가 없습니다. 표가 특이해 자동 추출이 안 된 지표는 <b>＋ 지표 수동 추가</b>로 입력하세요.</p>';
   }
+  if (mAddOpen) {
+    const opts = mKnownStudies().map(s => `<option value="${escapeHTML(s)}">`).join('');
+    html += '<div style="margin-top:10px; padding:10px 12px; border:1px dashed #9db6e0; border-radius:8px; background:#f7faff;">'
+      + '<div style="font-size:12.5px; font-weight:600; color:#2c3540; margin-bottom:6px;">＋ 지표 수동 추가</div>'
+      + '<div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">'
+      + `<input id="mAddStudy" list="mStudyDatalist" placeholder="Study(논문) — 클릭해 선택/입력" value="${escapeHTML(mAddDraft.study || '')}" style="min-width:210px; padding:6px 10px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit;">`
+      + `<datalist id="mStudyDatalist">${opts}</datalist>`
+      + `<input id="mAddVar" placeholder="지표(variable)" value="${escapeHTML(mAddDraft.variable || '')}" style="min-width:150px; padding:6px 10px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit;">`
+      + `<input id="mAddArm" placeholder="구분(arm) — 선택" style="width:130px; padding:6px 10px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit;">`
+      + `<input id="mAddUnit" placeholder="단위 — 선택" value="${escapeHTML(mAddDraft.unit || '')}" style="width:100px; padding:6px 10px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit;">`
+      + '<button id="mAddConfirm" style="font-size:12.5px; padding:6px 14px;">＋ 추가</button>'
+      + '<button id="mAddCancel" class="secondary" style="font-size:12.5px; padding:6px 12px;">닫기</button>'
+      + '</div>'
+      + '<p class="hint" style="font-size:11px; color:#6b7480; margin:6px 0 0;">추가 후 아래 표에서 중재/대조 n·mean·SD를 입력하고 <b>✔ 선택·수정 반영</b>을 누르세요. 같은 논문·지표는 <b>구분(arm)만 바꿔 연속 추가</b>됩니다. Study를 ①에서 넘긴 파일명과 같게 하면 NUQUEST 비뚤림위험이 자동 연계됩니다.</p>'
+      + '</div>';
+  }
   html += '<p class="hint" style="font-size:11.5px; color:#6b7480; margin:6px 0 0;">✦ 자동 선택 규칙: <b>시점</b>=최종 시점만(단·장기 시험은 둘 다) · <b>농도</b>=모두 포함 · <b>눈</b>=양안&gt;우세&gt;비우세&gt;우안&gt;좌안 중 하나. 값 수정 후 <b>✔ 선택·수정 반영</b>을 눌러야 위 요약·엑셀에 적용됩니다. <b>값형태</b>=mean/SD를 어느 값(변화량·종료값·기저값)으로 저장할지 선택.</p></div>';
   html += '</div>';
   const el = document.getElementById('mResults');
@@ -2937,7 +2970,10 @@ function renderExtractSummary() {
   const apB = document.getElementById('mArmApplyBtn'); if (apB) apB.addEventListener('click', applyArmEdits);
   const alB = document.getElementById('mArmAllBtn'); if (alB) alB.addEventListener('click', () => { el.querySelectorAll('#mArmTable .m-row-chk').forEach(cb => cb.checked = true); });
   const nnB = document.getElementById('mArmNoneBtn'); if (nnB) nnB.addEventListener('click', () => { el.querySelectorAll('#mArmTable .m-row-chk').forEach(cb => cb.checked = false); });
-  const adB = document.getElementById('mArmAddBtn'); if (adB) adB.addEventListener('click', addManualRow);
+  const adB = document.getElementById('mArmAddBtn'); if (adB) adB.addEventListener('click', () => { mAddOpen = !mAddOpen; if (mAddOpen) mAddDraft = { study: '', variable: '', unit: '' }; renderExtractSummary(); });
+  const acB = document.getElementById('mAddConfirm'); if (acB) acB.addEventListener('click', mConfirmAddRow);
+  const axB = document.getElementById('mAddCancel'); if (axB) axB.addEventListener('click', () => { mAddOpen = false; renderExtractSummary(); });
+  if (mAddOpen) { const f = document.getElementById(mAddDraft.study ? 'mAddArm' : 'mAddStudy'); if (f) f.focus(); }
   el.querySelectorAll('.m-row-del').forEach(b => b.addEventListener('click', e => { const u = e.currentTarget.dataset.uid; mExtractRows = mExtractRows.filter(r => r.uid !== u); renderExtractSummary(); }));
   el.querySelectorAll('th[data-key]').forEach(th => { const k = th.dataset.key; th.addEventListener('click', () => { if (mSortKey === k) mSortDir = -mSortDir; else { mSortKey = k; mSortDir = 1; } renderExtractSummary(); }); });
   el.querySelectorAll('.m-var-chk').forEach(cb => cb.addEventListener('change', e => { const v = e.target.dataset.var; if (e.target.checked) mExcludedVars.delete(v); else mExcludedVars.add(v); renderExtractSummary(); }));
@@ -2985,12 +3021,14 @@ function downloadDataB() {
   XLSX.utils.book_append_sheet(wb, ws, 'Data_extract');
 
   // ---- R_data ----  (arm = 구분값; studlab은 R에서 study+arm 조합 권장)
-  const rAoa = [['var','study','arm','unit','n_t','mean_t','sd_t','n_c','mean_c','sd_c']];
+  // mean/sd 우선순위: 변화량(change) → 종료값(endpoint) → 기저값(baseline). value_type에 무엇인지 표기.
+  const rAoa = [['var','study','arm','unit','value_type','n_t','mean_t','sd_t','n_c','mean_c','sd_c']];
   rows.forEach(r => {
-    rAoa.push([r.variable, r.study_id || r.study, r.arm_label || '', r.unit, NUM(r.t.n), NUM(r.t.change_mean), NUM(r.t.change_sd), NUM(r.c.n), NUM(r.c.change_mean), NUM(r.c.change_sd)]);
+    const tv = rArmVals(r.t), cv = rArmVals(r.c);
+    rAoa.push([r.variable, r.study_id || r.study, r.arm_label || '', r.unit, tv.type || cv.type, NUM(r.t.n), tv.m, tv.s, NUM(r.c.n), cv.m, cv.s]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(rAoa);
-  ws2['!cols'] = [{wch:12},{wch:12},{wch:16},{wch:9},{wch:7},{wch:10},{wch:10},{wch:7},{wch:10},{wch:10}];
+  ws2['!cols'] = [{wch:12},{wch:12},{wch:16},{wch:9},{wch:11},{wch:7},{wch:10},{wch:10},{wch:7},{wch:10},{wch:10}];
   if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws2);
   XLSX.utils.book_append_sheet(wb, ws2, 'R_data');
 
