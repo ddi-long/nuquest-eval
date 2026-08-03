@@ -2273,9 +2273,15 @@ const EXTRACT_SYSTEM_PROMPT = `당신은 메타분석 데이터 추출 전문가
     - SE/95%CI 보고 → before_se·after_se, before_ci_l·before_ci_u, after_ci_l·after_ci_u
   · change score 계산·SD 변환은 하지 말 것(R에서 계산).
 - 한 논문이 여러 지표를 측정하면 지표마다 별도 comparison.
-- [arm 분리 규칙 — 매우 중요] 한 논문 안에서 용량(예: 10·25·50 mg)이 다르거나 섭취 형태(예: juice·capsule)가 다른 중재군은 각각 **별도 comparison으로 분리**하고, arm_label에 구분값(예: "50mg", "juice")을 넣으세요. 이들은 메타분석에서 **별개의 연구로 취급**됩니다. (단일 arm이면 arm_label은 빈 문자열)
-- [별도 시험 분리] 한 논문에 서로 다른 **별도 시험**(예: 단기시험과 장기시험, 서로 다른 코호트·기간의 트라이얼, 표가 나뉘어 보고된 경우)이 있으면 각각 **별개 study로 분리**하고 arm_label에 구분(예: "short-term","long-term","S2","L1")을 넣으세요.
-- [시점 규칙] 하나의 연속된 시험 안에서 여러 시점을 측정한 경우 **최종(마지막) 시점 값만** 사용. (단, 위 '별도 시험'은 각각 유지)
+- [arm_label 규칙 — 매우 중요] **같은 변수(variable)가 여러 행으로 나뉘어 보고되면 각 행을 별도 comparison으로 분리하고, 무엇으로 나뉘었는지를 arm_label에 반드시 채우세요.** arm_label이 비면 사용자가 행들을 구분할 수 없습니다. 다음 중 해당하는 구분값을 넣으세요:
+  · 용량/농도: "10mg","50mg","고용량"
+  · 섭취 형태: "juice","capsule"
+  · 하위그룹: "Right eye","Left eye","Average of both eyes","Dominant eye","남성","65세 이상"
+  · 측정 조건: "before VDT load","after VDT load","fasting","postprandial"
+  · 별도 시험: "short-term","long-term","S2","L1" (별도 코호트·기간·표로 보고된 독립 시험)
+  여러 차원이 겹치면 함께 표기: "Right eye / after VDT load". 나뉘지 않은 단일 값이면 arm_label은 빈 문자열.
+- [시점 규칙] 하나의 연속된 시험 안에서 **같은 조건**을 여러 시점 측정했으면 **최종(마지막) 시점 값만** 사용. 단, 서로 다른 조건(예: before/after VDT load)은 시점이 아니라 별도 arm이므로 각각 유지.
+- [지표 라벨 정확성 — 매우 중요] variable에는 그 데이터가 실제로 측정한 지표명을 정확히 쓰세요. **목표 지표가 지정되어 있어도, 단위·측정방법이 명백히 다른 별개 지표를 목표 지표명으로 바꿔 라벨링하지 마세요.** (예: Schirmer's test[mm]를 Intraocular pressure[mmHg]로 라벨링 금지. 이 둘은 다른 지표입니다.) 목표 지표가 논문에 없으면 그 지표는 추출하지 말고, 대신 실제 측정된 지표를 원래 이름으로 추출하세요(지정 지표만 모드가 아닌 경우).
 - [표·그림 판독] 데이터가 표(Table)나 그림에 있으면 행·열을 정확히 매칭해 각 군의 값을 추출하세요. 값과 함께 SD가 아닌 **SEM만 보고**되면 before_se·after_se(또는 change 값의 se가 있으면 그대로)에 넣고 SD로 변환하지 마세요.
 
 [출력] 다른 설명 없이 JSON만:
@@ -2658,36 +2664,36 @@ function downloadDataB() {
   const gSty = { font:{bold:true,sz:10}, fill:{fgColor:{rgb:GFILL}}, alignment:{horizontal:'center',vertical:'center'}, border:xBorder() };
   const cSty = { font:{sz:10}, alignment:{vertical:'top',wrapText:true}, border:xBorder() };
 
-  // ---- Data_extract ----
-  const g1 = ['No','Study','아시아 인종','아시아 품종','Variables','Unit','Treatment (중재군)','','','','','','','','','','','','','Control (대조군)','','','','','','','','','','','',''];
-  const g2 = ['','','','','','','N1','M1','SD1','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95','N2','M2','SD2','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95'];
+  // ---- Data_extract ----  (Study 옆 '구분(arm)' = 용량·시점·하위그룹 등 행 구분값)
+  const g1 = ['No','Study','구분(arm/하위그룹)','아시아 인종','아시아 품종','Variables','Unit','Treatment (중재군)','','','','','','','','','','','','','Control (대조군)','','','','','','','','','','','',''];
+  const g2 = ['','','','','','','','N1','M1','SD1','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95','N2','M2','SD2','before_M','before_SD','before_SE','bef_l_CI95','bef_u_CI95','after_M','after_SD','after_SE','af_l_CI95','af_u_CI95'];
   const rows = mSelectedRows();
   const aoa = [g1, g2];
   rows.forEach((r, i) => {
     const tvals = ARM_FIELDS.map(f => NUM(r.t[f]));
     const cvals = ARM_FIELDS.map(f => NUM(r.c[f]));
-    aoa.push([i+1, r.study, r.asian_eth ? 'Y' : 'N', r.asian_var ? 'Y' : 'N', r.variable, r.unit, ...tvals, ...cvals]);
+    aoa.push([i+1, r.study_id || r.study, r.arm_label || '', r.asian_eth ? 'Y' : 'N', r.asian_var ? 'Y' : 'N', r.variable, r.unit, ...tvals, ...cvals]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!merges'] = [xMerge(0,6,0,18), xMerge(0,19,0,31)];
-  for (let c = 0; c < 6; c++) ws['!merges'].push(xMerge(0,c,1,c));
-  ws['!cols'] = [{wch:5},{wch:12},{wch:10},{wch:10},{wch:11},{wch:9}].concat(Array(26).fill({wch:9}));
+  ws['!merges'] = [xMerge(0,7,0,19), xMerge(0,20,0,32)];
+  for (let c = 0; c < 7; c++) ws['!merges'].push(xMerge(0,c,1,c));
+  ws['!cols'] = [{wch:5},{wch:12},{wch:18},{wch:10},{wch:10},{wch:11},{wch:9}].concat(Array(26).fill({wch:9}));
   const range = XLSX.utils.decode_range(ws['!ref']);
   for (let R = 0; R <= range.e.r; R++) for (let C = 0; C <= range.e.c; C++) {
     const addr = XLSX.utils.encode_cell({r:R,c:C}); const cell = ws[addr] || (ws[addr] = {t:'s',v:''});
-    if (R === 0) cell.s = (C >= 6) ? gSty : hSty;
+    if (R === 0) cell.s = (C >= 7) ? gSty : hSty;
     else if (R === 1) cell.s = hSty;
-    else { cell.s = Object.assign({}, cSty); if (C >= 6 && cell.v !== '') cell.s.fill = {fgColor:{rgb:EXT}}; }
+    else { cell.s = Object.assign({}, cSty); if (C >= 7 && cell.v !== '') cell.s.fill = {fgColor:{rgb:EXT}}; }
   }
   XLSX.utils.book_append_sheet(wb, ws, 'Data_extract');
 
-  // ---- R_data ----
-  const rAoa = [['var','study','unit','n_t','mean_t','sd_t','n_c','mean_c','sd_c']];
+  // ---- R_data ----  (arm = 구분값; studlab은 R에서 study+arm 조합 권장)
+  const rAoa = [['var','study','arm','unit','n_t','mean_t','sd_t','n_c','mean_c','sd_c']];
   rows.forEach(r => {
-    rAoa.push([r.variable, r.study, r.unit, NUM(r.t.n), NUM(r.t.change_mean), NUM(r.t.change_sd), NUM(r.c.n), NUM(r.c.change_mean), NUM(r.c.change_sd)]);
+    rAoa.push([r.variable, r.study_id || r.study, r.arm_label || '', r.unit, NUM(r.t.n), NUM(r.t.change_mean), NUM(r.t.change_sd), NUM(r.c.n), NUM(r.c.change_mean), NUM(r.c.change_sd)]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(rAoa);
-  ws2['!cols'] = [{wch:12},{wch:12},{wch:9},{wch:7},{wch:10},{wch:10},{wch:7},{wch:10},{wch:10}];
+  ws2['!cols'] = [{wch:12},{wch:12},{wch:16},{wch:9},{wch:7},{wch:10},{wch:10},{wch:7},{wch:10},{wch:10}];
   if (typeof styleSimpleSheet === 'function') styleSimpleSheet(ws2);
   XLSX.utils.book_append_sheet(wb, ws2, 'R_data');
 
