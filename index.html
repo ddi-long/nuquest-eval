@@ -2456,6 +2456,44 @@ function computeExtractSummary(rows) {
 let mExcludedVars = new Set();  // 다운로드에서 제외할 지표
 let mSortKey = 'variable', mSortDir = 1, mFilterText = '';
 function mSelectedRows() { return mExtractRows.filter(r => !mExcludedVars.has(r.variable || '(미상)')); }
+// ===== NUQUEST 연계 → GRADE 비뚤림위험 + 최종등급 =====
+let mRobBasis = 'nuquest';   // 'nuquest' | 'gigwan'
+let mGrade = {};             // { variable: { i2:'', ov:{비뚤림위험,비일관성,비직접성,비정밀성,출판비뚤림} } }
+function mGradeState(v) { if (!mGrade[v]) mGrade[v] = { i2: '', ov: {} }; return mGrade[v]; }
+function loadNuquestStore() { try { return JSON.parse(localStorage.getItem(NUQUEST_FOR_GRADE) || '{}'); } catch (e) { return {}; } }
+function robFromNuquest(variable) {
+  const store = loadNuquestStore();
+  const files = [...new Set(mExtractRows.filter(r => (r.variable || '(미상)') === variable).map(r => r.fileName).filter(Boolean))];
+  if (files.length === 0) return { j: '판단불가', linked: false, note: '포함 논문 없음' };
+  const ratings = []; let unmatched = 0;
+  files.forEach(fn => { const e = store[fn]; if (e && e[mRobBasis]) ratings.push(e[mRobBasis]); else unmatched++; });
+  if (ratings.length === 0) return { j: '판단불가', linked: false, note: 'NUQUEST 미연계(①에서 넘기기 필요)' };
+  if (unmatched > 0) return { j: '판단불가', linked: false, note: `일부 미매칭(${unmatched}/${files.length}편)` };
+  const n = files.length, busok = ratings.filter(r => r === '부족').length;
+  const j = (n === 1) ? '유지' : (n === 2) ? (busok >= 1 ? '강등' : '유지') : (busok > n / 2 ? '강등' : '유지');
+  return { j, linked: true, note: `논문 ${n}편, 부족 ${busok}` };
+}
+function computeVarGrade(s) {
+  const st = mGradeState(s.variable);
+  const rob = robFromNuquest(s.variable);
+  const i2 = (st.i2 === '' || st.i2 == null) ? null : Number(st.i2);
+  const autoInc = (i2 != null && !isNaN(i2) && i2 >= 50) ? '강등' : '유지';
+  const autoInd = (s.asian === 'O') ? '유지' : '강등';
+  const autoImp = (s.total >= 100) ? '유지' : '강등';
+  const dom = {
+    비뚤림위험: st.ov.비뚤림위험 || rob.j,
+    비일관성: st.ov.비일관성 || autoInc,
+    비직접성: st.ov.비직접성 || autoInd,
+    비정밀성: st.ov.비정밀성 || autoImp,
+    출판비뚤림: st.ov.출판비뚤림 || '판단불가'
+  };
+  let down = 0; Object.values(dom).forEach(v => { if (v === '강등') down++; });
+  return { dom, down, grade: gradeByDowngrades(down), rob, i2 };
+}
+function domSelect(v, domName, val) {
+  return `<select class="m-dom" data-var="${escapeHTML(v)}" data-dom="${domName}" style="font-size:11px;padding:2px 4px;border:1px solid #c8cdd4;border-radius:4px;background:#fff;">`
+    + ['유지', '강등', '판단불가'].map(o => `<option ${o === val ? 'selected' : ''}>${o}</option>`).join('') + '</select>';
+}
 function renderExtractSummary() {
   let summ = computeExtractSummary();
   const totalVars = summ.length;
@@ -2468,57 +2506,54 @@ function renderExtractSummary() {
   });
   const selCount = totalVars - mExcludedVars.size;
   document.getElementById('mSummaryMeta').textContent = `(논문 ${new Set(mExtractRows.map(r=>r.study_id)).size}편 · 지표 ${totalVars}개 · 선택 ${selCount}개 · 추출행 ${mExtractRows.length})`;
-  const HKEYS = [['variable','Variable(지표)'],['studies','study 수'],['n_t','중재 n'],['n_c','대조 n'],['units','단위'],['warn','경고'],['total','총 대상자수(n)'],['i2','I²'],['asian','아시아 포함']];
+  const HKEYS = [['variable','Variable(지표)'],['studies','study 수'],['total','총 대상자수(n)'],['units','단위'],['asian','아시아']];
   const allVisSel = summ.every(s => !mExcludedVars.has(s.variable));
+  const nqCount = Object.keys(loadNuquestStore()).length;
   let html = '<div class="result-block">'
-    + '<div class="form-row" style="margin-bottom:10px; align-items:center;">'
-    + `<input id="mFilterInput" placeholder="지표명 검색…" value="${escapeHTML(mFilterText)}" style="min-width:180px; padding:6px 10px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit;">`
-    + `<button id="mSelAllBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">${allVisSel ? '표시된 지표 전체 해제' : '표시된 지표 전체 선택'}</button>`
-    + '<span class="status" style="margin:0; align-self:center;">체크한 지표만 엑셀에 포함됩니다. 헤더 클릭 시 정렬.</span>'
+    + '<div class="form-row" style="margin-bottom:10px; align-items:center; flex-wrap:wrap;">'
+    + `<input id="mFilterInput" placeholder="지표명 검색…" value="${escapeHTML(mFilterText)}" style="min-width:150px; padding:6px 10px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit;">`
+    + `<button id="mSelAllBtn" class="secondary" style="font-size:12.5px; padding:5px 12px;">${allVisSel ? '표시 지표 전체 해제' : '표시 지표 전체 선택'}</button>`
+    + '<label style="font-size:12.5px; color:#4a5260; display:inline-flex; align-items:center; gap:4px;">비뚤림위험 기준: '
+    + `<select id="mRobBasis" style="font-size:12.5px; padding:4px 6px; border:1px solid #c8cdd4; border-radius:5px;"><option value="nuquest" ${mRobBasis==='nuquest'?'selected':''}>NUQUEST 총점</option><option value="gigwan" ${mRobBasis==='gigwan'?'selected':''}>기관 총점</option></select></label>`
+    + `<span class="status" style="margin:0;">NUQUEST 연계 ${nqCount}편 저장됨 · 체크 지표만 엑셀 포함</span>`
     + '</div>'
     + '<div class="grade-table-wrap"><table class="grade-table"><thead><tr><th></th>';
-  HKEYS.forEach(([k, label], i) => {
-    const arrow = (mSortKey === k) ? (mSortDir === 1 ? ' ▲' : ' ▼') : '';
-    const sortable = (k !== 'warn' && k !== 'i2');
-    html += `<th data-key="${k}"${i>=6?' style="background:#d1fae5;cursor:'+(sortable?'pointer':'default')+';"':(sortable?' style="cursor:pointer;"':'')}>${label}${arrow}</th>`;
-  });
-  html += '</tr></thead><tbody>';
+  HKEYS.forEach(([k, label]) => { const arrow = (mSortKey === k) ? (mSortDir === 1 ? ' ▲' : ' ▼') : ''; html += `<th data-key="${k}" style="cursor:pointer;">${label}${arrow}</th>`; });
+  html += '<th>I²(입력)</th>';
+  ['비뚤림위험','비일관성','비직접성','비정밀성','출판비뚤림','최종 등급'].forEach(h => html += `<th style="background:#d1fae5;">${h}</th>`);
+  html += '<th>비고</th></tr></thead><tbody>';
   summ.forEach(s => {
     const checked = !mExcludedVars.has(s.variable);
+    const g = computeVarGrade(s);
+    const st = mGradeState(s.variable);
+    const gr = g.grade.grade.replace(/\s/g, '');
     html += '<tr>'
       + `<td class="c"><input type="checkbox" class="m-var-chk" data-var="${escapeHTML(s.variable)}" ${checked ? 'checked' : ''}></td>`
-      + `<td>${escapeHTML(s.variable)}</td>`
+      + `<td>${escapeHTML(s.variable)}${s.warn ? ' <span class="dg-강등" title="단위 혼재">⚠</span>' : ''}</td>`
       + `<td class="c">${s.studies}</td>`
-      + `<td class="c">${s.n_t}</td>`
-      + `<td class="c">${s.n_c}</td>`
+      + `<td class="c">${s.total}</td>`
       + `<td>${escapeHTML(s.units.join(', '))}</td>`
-      + `<td>${s.warn ? '<span class="dg-강등">⚠ 단위 혼재 → 선형 변환 또는 SMD 검토</span>' : ''}</td>`
-      + `<td class="c" style="background:#ecfdf5;"><b>${s.total}</b></td>`
-      + `<td class="c" style="background:#f1f3f5;color:#98a2b3;">R</td>`
-      + `<td class="c" style="background:#ecfdf5;">${s.asian}</td>`
+      + `<td class="c">${s.asian}</td>`
+      + `<td class="c"><input class="m-i2" data-var="${escapeHTML(s.variable)}" value="${st.i2}" placeholder="R값" style="width:52px;padding:2px 4px;border:1px solid #c8cdd4;border-radius:4px;font-size:11px;"></td>`
+      + `<td class="c">${domSelect(s.variable,'비뚤림위험',g.dom.비뚤림위험)}</td>`
+      + `<td class="c">${domSelect(s.variable,'비일관성',g.dom.비일관성)}</td>`
+      + `<td class="c">${domSelect(s.variable,'비직접성',g.dom.비직접성)}</td>`
+      + `<td class="c">${domSelect(s.variable,'비정밀성',g.dom.비정밀성)}</td>`
+      + `<td class="c">${domSelect(s.variable,'출판비뚤림',g.dom.출판비뚤림)}</td>`
+      + `<td class="c"><span class="grade-pill grade-${gr}">${g.grade.tier}</span><br><span style="font-size:10px;color:#6b7480;">${g.grade.grade}</span></td>`
+      + `<td style="font-size:11px;color:#6b7480;">${escapeHTML(g.rob.note)}${g.rob.linked ? '' : ' ⚠'}</td>`
       + '</tr>';
   });
   html += '</tbody></table></div></div>';
   const el = document.getElementById('mResults');
   el.innerHTML = html;
   document.getElementById('mFilterInput').addEventListener('input', e => { mFilterText = e.target.value; renderExtractSummary(); });
-  el.querySelectorAll('th[data-key]').forEach(th => {
-    const k = th.dataset.key;
-    if (k === 'warn' || k === 'i2') return;
-    th.addEventListener('click', () => { if (mSortKey === k) mSortDir = -mSortDir; else { mSortKey = k; mSortDir = 1; } renderExtractSummary(); });
-  });
-  el.querySelectorAll('.m-var-chk').forEach(cb => {
-    cb.addEventListener('change', e => {
-      const v = e.target.dataset.var;
-      if (e.target.checked) mExcludedVars.delete(v); else mExcludedVars.add(v);
-      renderExtractSummary();
-    });
-  });
-  document.getElementById('mSelAllBtn').addEventListener('click', () => {
-    if (allVisSel) summ.forEach(s => mExcludedVars.add(s.variable));
-    else summ.forEach(s => mExcludedVars.delete(s.variable));
-    renderExtractSummary();
-  });
+  document.getElementById('mRobBasis').addEventListener('change', e => { mRobBasis = e.target.value; renderExtractSummary(); });
+  el.querySelectorAll('th[data-key]').forEach(th => { const k = th.dataset.key; th.addEventListener('click', () => { if (mSortKey === k) mSortDir = -mSortDir; else { mSortKey = k; mSortDir = 1; } renderExtractSummary(); }); });
+  el.querySelectorAll('.m-var-chk').forEach(cb => cb.addEventListener('change', e => { const v = e.target.dataset.var; if (e.target.checked) mExcludedVars.delete(v); else mExcludedVars.add(v); renderExtractSummary(); }));
+  el.querySelectorAll('.m-i2').forEach(inp => inp.addEventListener('change', e => { mGradeState(e.target.dataset.var).i2 = e.target.value.trim(); renderExtractSummary(); }));
+  el.querySelectorAll('.m-dom').forEach(sel => sel.addEventListener('change', e => { mGradeState(e.target.dataset.var).ov[e.target.dataset.dom] = e.target.value; renderExtractSummary(); }));
+  document.getElementById('mSelAllBtn').addEventListener('click', () => { if (allVisSel) summ.forEach(s => mExcludedVars.add(s.variable)); else summ.forEach(s => mExcludedVars.delete(s.variable)); renderExtractSummary(); });
 }
 
 document.getElementById('mDownloadBtn').addEventListener('click', () => {
@@ -2587,6 +2622,22 @@ function downloadDataB() {
     else { cell.s = Object.assign({}, cSty); if (C >= 6) cell.s.fill = {fgColor:{rgb:'ECFDF5'}}; if (C === 7) cell.s.fill = {fgColor:{rgb:'F1F3F5'}}; }
   }
   XLSX.utils.book_append_sheet(wb, ws3, '지표별_요약');
+
+  // ---- GRADE_평가 (NUQUEST 연계) ----
+  const gHead = ['Variable(지표)','논문 수','총 대상자수(n)','아시아','I²','비뚤림위험','비일관성','비직접성','비정밀성','출판비뚤림','강등 수','최종 등급','근거수준','비뚤림위험 근거'];
+  const gAoa = [gHead];
+  summ.forEach(s => {
+    const g = computeVarGrade(s);
+    gAoa.push([s.variable, s.studies, s.total, s.asian, (g.i2 == null ? '' : g.i2), g.dom.비뚤림위험, g.dom.비일관성, g.dom.비직접성, g.dom.비정밀성, g.dom.출판비뚤림, g.down, g.grade.tier, g.grade.grade, g.rob.note + (g.rob.linked ? '' : ' (미연계)')]);
+  });
+  const wsG = XLSX.utils.aoa_to_sheet(gAoa);
+  wsG['!cols'] = [{wch:15},{wch:8},{wch:13},{wch:7},{wch:7},{wch:11},{wch:10},{wch:10},{wch:10},{wch:11},{wch:8},{wch:9},{wch:10},{wch:26}];
+  const rG = XLSX.utils.decode_range(wsG['!ref']);
+  for (let R = 0; R <= rG.e.r; R++) for (let C = 0; C <= rG.e.c; C++) {
+    const addr = XLSX.utils.encode_cell({r:R,c:C}); const cell = wsG[addr] || (wsG[addr] = {t:'s',v:''});
+    cell.s = (R === 0) ? gr2 : Object.assign({}, cSty);
+  }
+  XLSX.utils.book_append_sheet(wb, wsG, 'GRADE_평가');
 
   XLSX.writeFile(wb, 'data_B_추출_' + dateStamp() + '.xlsx');
 }
