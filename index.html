@@ -552,6 +552,30 @@
   </p>
 </section>
 
+<!-- 2.5 ChatGPT 등 챗봇으로 평가 (API 키 없이) -->
+<section class="card" id="chatbotCard">
+  <h2>🤖 ChatGPT 등 챗봇으로 평가 (API 키 없이)</h2>
+  <p class="hint" style="font-size:12.5px; color:#4a5260; margin:0 0 10px; line-height:1.6;">
+    <b>PDF 업로드가 되는 챗봇</b>(ChatGPT Plus·Claude 등)이 있으면 API 키 없이도 평가할 수 있습니다.
+    아래 <b>평가 프롬프트를 복사</b>해 챗봇에 붙여넣고 논문 PDF를 첨부하세요.
+    챗봇이 출력한 <b>JSON</b>을 아래 칸에 붙여 <b>결과 추가</b>를 누르면, 위 API 평가와 <b>동일하게</b> 점수·판정·엑셀이 생성됩니다.
+  </p>
+  <div class="form-row" style="margin-bottom:10px;">
+    <button id="copyPromptBtn" class="secondary">📋 평가 프롬프트 복사</button>
+    <button id="downloadPromptBtn" class="secondary">⬇ 프롬프트 .txt 다운로드</button>
+    <span class="status" id="copyPromptStatus" style="margin:0; align-self:center;"></span>
+  </div>
+  <input id="pasteLabel" placeholder="논문 파일명/제목 (예: Kim 2020) — 결과 구분·NUQUEST 연계용" style="width:100%; max-width:440px; padding:8px 12px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit; margin-bottom:8px;">
+  <textarea id="pasteJson" placeholder="여기에 챗봇이 출력한 JSON 전체를 붙여넣으세요 ({ 부터 } 까지)" style="width:100%; box-sizing:border-box; min-height:120px; padding:10px; border:1px solid #c8cdd4; border-radius:6px; font-size:12.5px; font-family:ui-monospace,Consolas,monospace; resize:vertical;"></textarea>
+  <div class="form-row" style="margin-top:8px;">
+    <button id="addPasteBtn">＋ 결과 추가</button>
+    <span class="status" id="pasteStatus" style="margin:0; align-self:center;"></span>
+  </div>
+  <p class="hint" style="font-size:11.5px; color:#6b7480; margin:8px 0 0;">
+    한 번에 논문 1편만. 여러 편은 각각 새 대화로 반복해 하나씩 추가하세요. 추가된 결과도 검토자 판정·엑셀·GRADE 넘기기를 그대로 쓸 수 있습니다.
+  </p>
+</section>
+
 <!-- 3. 진행 상황 -->
 <section class="card" id="progressCard" style="display:none;">
   <h2>③ 진행 상황</h2>
@@ -1231,6 +1255,69 @@ function riskLabel(score) {
   if (score === '부족') return '바이어스 위험 높음';
   return '';
 }
+
+// LLM(JSON) 결과 → allResults 항목 (API·챗봇 붙여넣기 공용)
+function buildNuquestResult(llmResult, fileName, opts) {
+  opts = opts || {};
+  const pdfText = opts.pdfText || '';
+  const canVerify = !!pdfText && !opts.isScanned;
+  const itemsMap = {};
+  (llmResult.items || []).forEach(it => { itemsMap[it.item_id] = it; });
+  const items = NUQUEST_ITEMS.map(def => {
+    const got = itemsMap[def.id] || {};
+    let judg = got.judgment;
+    if (!JUDGMENTS.includes(judg)) judg = '아니오';
+    return {
+      item_id: def.id, name: def.name, domain: def.domain, domainName: def.domainName,
+      judgment: judg, evidence_quote: got.evidence_quote || '', evidence_summary: got.evidence_summary || '불명확하여 검토 필요',
+    };
+  });
+  // 단회섭취(급성) 연구면 4.3·4.5는 '적용되지 않음'으로 고정
+  if ((llmResult.design_check || {}).intake_type === 'single-dose') {
+    items.forEach(it => {
+      if (it.item_id === '4.3' || it.item_id === '4.5') {
+        if (it.judgment !== '적용되지 않음') it.evidence_summary = '[단회섭취(급성) 연구로 자동 "적용되지 않음" 처리] (원 판정: ' + it.judgment + ') ' + (it.evidence_summary || '');
+        it.judgment = '적용되지 않음';
+      }
+    });
+  }
+  // 발췌 검증 (원문 텍스트 없으면=챗봇 붙여넣기·스캔본 생략)
+  items.forEach(it => {
+    if (normalizeJudgment(it.judgment) === '적용되지 않음') it.verify = 'na';
+    else if (!canVerify) it.verify = 'skip';
+    else it.verify = verifyEvidence(it.evidence_quote, pdfText);
+  });
+  // 검토자 입력 복원
+  items.forEach(it => { const sv = getReview(fileName, it.item_id); if (sv) { it.userJudgment = sv.j || ''; it.userNote = sv.n || ''; } });
+  const domainScores = [1,2,3,4].map(d => ({ domain: d, score: calcDomainScore(items.filter(it => it.domain === d)) }));
+  const scoreArr = domainScores.map(d => d.score);
+  return {
+    fileName, paperTitle: opts.paperTitle || deriveTitle(fileName),
+    designCheck: llmResult.design_check || {}, items, domainScores,
+    scoreA: calcScoreA(scoreArr), scoreB: calcScoreB(scoreArr),
+    pdfText, sourceMode: opts.sourceMode || 'text',
+  };
+}
+
+// 챗봇(ChatGPT/Claude 등)에 붙여넣을 프롬프트 팩 — 기준+스키마 자기완결
+function nuquestPromptPack() {
+  return [
+    '[NUQUEST 개별 RCT 자동평가 — 챗봇용 프롬프트]',
+    '',
+    '■ 사용법',
+    '1) 이 프롬프트 전체를 ChatGPT(또는 Claude 등 PDF 업로드가 되는 챗봇)에 붙여넣으세요.',
+    '2) 평가할 RCT 논문 PDF 1편을 같은 대화에 첨부하세요.',
+    '3) 챗봇이 아래 스키마의 JSON을 출력합니다. 그 JSON 전체({ 부터 } 까지)를 복사하세요.',
+    '4) 이 도구 ① 탭 "🤖 ChatGPT 등 챗봇으로 평가" 칸에 붙이고 [＋ 결과 추가]를 누르면 점수·판정·엑셀이 API와 동일하게 생성됩니다.',
+    '※ 한 번에 논문 1편만. 여러 편은 각각 새 대화로 반복하세요.',
+    '',
+    '──────────────────────────────',
+    '',
+    '첨부한 RCT 논문 PDF 1편을 표·그림까지 읽고(스캔본이면 OCR), 아래 지침에 따라 평가하세요.',
+    '',
+    SYSTEM_PROMPT,
+  ].join('\n');
+}
 const SCORE_A_NOTE = '※ 해당 총점은 농산물 특성에 따라 영양특화 항목의 가중치를 낮춘 결과입니다.';
 const SCORE_B_NOTE = '※ 해당 총점은 NUQUEST 평가도구 원 기준에 따른 결과입니다.';
 
@@ -1301,70 +1388,9 @@ evaluateBtn.addEventListener('click', async () => {
         llmResult = await callGemini(apiKey, pdfText, entry.file.name, (msg) => { stepEl.textContent = msg; }, suppParts);
       }
 
-      // 14개 항목 보정 (LLM이 누락 시 빈 값으로 채움)
-      const itemsMap = {};
-      (llmResult.items || []).forEach(it => { itemsMap[it.item_id] = it; });
-      const items = NUQUEST_ITEMS.map(def => {
-        const got = itemsMap[def.id] || {};
-        let judg = got.judgment;
-        if (!JUDGMENTS.includes(judg)) judg = '아니오';
-        return {
-          item_id: def.id,
-          name: def.name,
-          domain: def.domain,
-          domainName: def.domainName,
-          judgment: judg,
-          evidence_quote: got.evidence_quote || '',
-          evidence_summary: got.evidence_summary || '불명확하여 검토 필요',
-        };
-      });
-
-      // 단회섭취(급성) 연구면 4.3·4.5는 '적용되지 않음'으로 고정 (일관성 하드 가드)
-      const intakeType = (llmResult.design_check || {}).intake_type;
-      if (intakeType === 'single-dose') {
-        items.forEach(it => {
-          if (it.item_id === '4.3' || it.item_id === '4.5') {
-            if (it.judgment !== '적용되지 않음') {
-              it.evidence_summary = '[단회섭취(급성) 연구로 자동 "적용되지 않음" 처리] (원 판정: ' + it.judgment + ') ' + (it.evidence_summary || '');
-            }
-            it.judgment = '적용되지 않음';
-          }
-        });
-      }
-
-      // 발췌 검증 (스캔본은 대조할 텍스트 레이어가 없어 생략)
-      items.forEach(it => {
-        if (normalizeJudgment(it.judgment) === '적용되지 않음') it.verify = 'na';
-        else if (isScanned) it.verify = 'skip';
-        else it.verify = verifyEvidence(it.evidence_quote, pdfText);
-      });
-
-      // 검토자 입력 복원 (이전에 같은 파일을 평가했다면)
-      items.forEach(it => {
-        const sv = getReview(entry.file.name, it.item_id);
-        if (sv) { it.userJudgment = sv.j || ''; it.userNote = sv.n || ''; }
-      });
-
-      // 점수 계산
-      const domainScores = [1,2,3,4].map(d => {
-        const dItems = items.filter(it => it.domain === d);
-        return { domain:d, score: calcDomainScore(dItems) };
-      });
-      const scoreArr = domainScores.map(d => d.score);
-      const scoreA = calcScoreA(scoreArr);
-      const scoreB = calcScoreB(scoreArr);
-
-      allResults.push({
-        fileName: entry.file.name,
-        paperTitle: deriveTitle(entry.file.name),
-        designCheck: llmResult.design_check || {},
-        items,
-        domainScores,
-        scoreA,
-        scoreB,
-        pdfText,
-        sourceMode,
-      });
+      const result = buildNuquestResult(llmResult, entry.file.name, { pdfText, isScanned, sourceMode });
+      allResults.push(result);
+      const scoreA = result.scoreA, scoreB = result.scoreB;
 
       const modeTag = sourceMode === 'ocr' ? ' · 스캔본 OCR' : (sourceMode === 'pdf' ? ' · 원본 판독' : '');
       li.innerHTML = `<span class="badge done">완료</span><span>${i+1}. ${escapeHTML(entry.file.name)}</span><span class="size">기관: ${scoreA} · NUQUEST: ${scoreB}${modeTag}</span>`;
@@ -1634,6 +1660,47 @@ function downloadCriteria() {
   XLSX.writeFile(wb, 'NUQUEST_평가기준_점수산정기준.xlsx');
 }
 document.getElementById('downloadCriteriaBtn').addEventListener('click', downloadCriteria);
+
+// ===== 챗봇(ChatGPT 등) 프롬프트 팩 + JSON 결과 붙여넣기 =====
+document.getElementById('copyPromptBtn').addEventListener('click', () => {
+  const txt = nuquestPromptPack();
+  const st = document.getElementById('copyPromptStatus');
+  const done = () => { st.textContent = '✅ 복사됨 — 챗봇에 붙여넣고 논문 PDF를 첨부하세요.'; st.style.color = '#0a7d33'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done).catch(() => { fallbackCopyText(txt); done(); });
+  } else { fallbackCopyText(txt); done(); }
+});
+function fallbackCopyText(txt) {
+  const ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+document.getElementById('downloadPromptBtn').addEventListener('click', () => {
+  const blob = new Blob([nuquestPromptPack()], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'NUQUEST_챗봇_프롬프트.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+});
+document.getElementById('addPasteBtn').addEventListener('click', () => {
+  const raw = document.getElementById('pasteJson').value || '';
+  const label = (document.getElementById('pasteLabel').value || '').trim();
+  const st = document.getElementById('pasteStatus');
+  const fail = (m) => { st.textContent = '❌ ' + m; st.style.color = '#b42318'; };
+  const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+  if (s < 0 || e <= s) { fail('JSON을 찾지 못했습니다. { 부터 } 까지 전체를 붙여넣으세요.'); return; }
+  let parsed;
+  try { parsed = JSON.parse(raw.slice(s, e + 1)); } catch (err) { fail('JSON 파싱 실패: ' + err.message.slice(0, 90)); return; }
+  if (!parsed.items || !Array.isArray(parsed.items) || parsed.items.length === 0) { fail('items 배열이 없습니다. NUQUEST 평가 JSON이 맞는지 확인하세요.'); return; }
+  const fileName = label || ('붙여넣기 ' + (allResults.length + 1));
+  const result = buildNuquestResult(parsed, fileName, { sourceMode: 'chatbot', paperTitle: label || undefined });
+  allResults.push(result);
+  resultsSection.style.display = 'block';
+  renderAllResults();
+  document.getElementById('pasteJson').value = '';
+  st.textContent = `✅ 추가됨: ${result.paperTitle} · 기관 ${result.scoreA} · NUQUEST ${result.scoreB}`;
+  st.style.color = '#0a7d33';
+  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 
 // =============================================================
 // 엑셀 다운로드 — 논문당 1시트 + results 요약 시트
