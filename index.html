@@ -565,14 +565,24 @@
     <button id="downloadPromptBtn" class="secondary">⬇ 프롬프트 .txt 다운로드</button>
     <span class="status" id="copyPromptStatus" style="margin:0; align-self:center;"></span>
   </div>
-  <input id="pasteLabel" placeholder="논문 파일명/제목 (예: Kim 2020) — 결과 구분·NUQUEST 연계용" style="width:100%; max-width:440px; padding:8px 12px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit; margin-bottom:8px;">
-  <textarea id="pasteJson" placeholder="여기에 챗봇이 출력한 JSON 전체를 붙여넣으세요 ({ 부터 } 까지)" style="width:100%; box-sizing:border-box; min-height:120px; padding:10px; border:1px solid #c8cdd4; border-radius:6px; font-size:12.5px; font-family:ui-monospace,Consolas,monospace; resize:vertical;"></textarea>
-  <div class="form-row" style="margin-top:8px;">
-    <button id="addPasteBtn">＋ 결과 추가</button>
-    <span class="status" id="pasteStatus" style="margin:0; align-self:center;"></span>
+  <div class="form-row" style="margin-bottom:10px; align-items:center;">
+    <button id="nqJsonUploadBtn" class="secondary">📤 JSON 파일 업로드 (여러 개 가능)</button>
+    <input type="file" id="nqJsonInput" accept=".json,application/json" multiple style="display:none">
+    <span class="status" id="nqJsonStatus" style="margin:0; align-self:center;">챗봇이 준 .json 파일을 한꺼번에 올리면 각 파일이 논문 1편으로 추가됩니다.</span>
   </div>
+  <details style="margin-top:6px;">
+    <summary style="cursor:pointer; font-size:12.5px; color:#4a5260;">또는 JSON 텍스트로 붙여넣기 (1편씩)</summary>
+    <div style="margin-top:8px;">
+      <input id="pasteLabel" placeholder="논문 파일명/제목 (예: Kim 2020) — 결과 구분·NUQUEST 연계용" style="width:100%; max-width:440px; padding:8px 12px; border:1px solid #c8cdd4; border-radius:6px; font-size:13px; font-family:inherit; margin-bottom:8px;">
+      <textarea id="pasteJson" placeholder="여기에 챗봇이 출력한 JSON 전체를 붙여넣으세요 ({ 부터 } 까지)" style="width:100%; box-sizing:border-box; min-height:120px; padding:10px; border:1px solid #c8cdd4; border-radius:6px; font-size:12.5px; font-family:ui-monospace,Consolas,monospace; resize:vertical;"></textarea>
+      <div class="form-row" style="margin-top:8px;">
+        <button id="addPasteBtn">＋ 결과 추가</button>
+        <span class="status" id="pasteStatus" style="margin:0; align-self:center;"></span>
+      </div>
+    </div>
+  </details>
   <p class="hint" style="font-size:11.5px; color:#6b7480; margin:8px 0 0;">
-    한 번에 논문 1편만. 여러 편은 각각 새 대화로 반복해 하나씩 추가하세요. 추가된 결과도 검토자 판정·엑셀·GRADE 넘기기를 그대로 쓸 수 있습니다.
+    추가된 결과도 검토자 판정·엑셀·GRADE 넘기기를 그대로 쓸 수 있습니다. (파일명이 ①에서 GRADE로 넘길 파일명과 같으면 자동 연계)
   </p>
 </section>
 
@@ -635,6 +645,25 @@
     <p class="hint" style="font-size:12px; color:#6b7480; margin:8px 0 0;">
       논문이 GRADE를 이미 보고한 경우 그 등급을 사용하고(출처: 저자), 보고하지 않은 경우 내부 기준으로 산출합니다(출처: 기관).
     </p>
+  </section>
+
+  <!-- G2.5 챗봇으로 평가 (API 키 없이) -->
+  <section class="card" id="gChatbotCard">
+    <h2>🤖 ChatGPT 등 챗봇으로 평가 (API 키 없이)</h2>
+    <p class="hint" style="font-size:12.5px; color:#4a5260; margin:0 0 10px; line-height:1.6;">
+      <b>PDF 업로드가 되는 챗봇</b>이 있으면 API 없이도 평가할 수 있습니다. 아래 <b>프롬프트를 복사</b>해 챗봇에 붙여넣고 SR/UR PDF를 첨부한 뒤,
+      챗봇이 준 <b>.json 파일을 업로드</b>(여러 편 한꺼번에)하면 GRADE 표·엑셀이 API와 동일하게 생성됩니다.
+    </p>
+    <div class="form-row" style="margin-bottom:10px;">
+      <button id="gCopyPromptBtn" class="secondary">📋 평가 프롬프트 복사</button>
+      <button id="gDownloadPromptBtn" class="secondary">⬇ 프롬프트 .txt 다운로드</button>
+      <span class="status" id="gCopyPromptStatus" style="margin:0; align-self:center;"></span>
+    </div>
+    <div class="form-row" style="align-items:center;">
+      <button id="gJsonUploadBtn" class="secondary">📤 JSON 파일 업로드 (여러 개 가능)</button>
+      <input type="file" id="gJsonInput" accept=".json,application/json" multiple style="display:none">
+      <span class="status" id="gJsonStatus" style="margin:0; align-self:center;">챗봇이 준 .json 파일을 한꺼번에 올리면 각 파일이 논문 1편으로 추가됩니다.</span>
+    </div>
   </section>
 
   <!-- G3. 진행 상황 -->
@@ -736,6 +765,25 @@
     <p class="hint" style="font-size:12px; color:#6b7480; margin:8px 0 0;">
       논문에 보고된 원자료(N·mean·SD·SE·CI)만 추출합니다. change score·SD 변환·I²·단위 변환은 R에서 계산합니다.
     </p>
+  </section>
+
+  <!-- M2.5 챗봇으로 추출 (API 키 없이) -->
+  <section class="card" id="mChatbotCard">
+    <h2>🤖 ChatGPT 등 챗봇으로 추출 (API 키 없이)</h2>
+    <p class="hint" style="font-size:12.5px; color:#4a5260; margin:0 0 10px; line-height:1.6;">
+      <b>PDF 업로드가 되는 챗봇</b>이 있으면 API 없이도 추출할 수 있습니다. 아래 <b>프롬프트를 복사</b>해 챗봇에 붙여넣고 논문 PDF를 첨부한 뒤,
+      챗봇이 준 <b>.json 파일을 업로드</b>(여러 편 한꺼번에)하면 지표별 요약·엑셀이 API와 동일하게 생성됩니다. 목표 지표를 위에 입력하면 프롬프트에 반영됩니다.
+    </p>
+    <div class="form-row" style="margin-bottom:10px;">
+      <button id="mCopyPromptBtn" class="secondary">📋 추출 프롬프트 복사</button>
+      <button id="mDownloadPromptBtn" class="secondary">⬇ 프롬프트 .txt 다운로드</button>
+      <span class="status" id="mCopyPromptStatus" style="margin:0; align-self:center;"></span>
+    </div>
+    <div class="form-row" style="align-items:center;">
+      <button id="mJsonUploadBtn" class="secondary">📤 JSON 파일 업로드 (여러 개 가능)</button>
+      <input type="file" id="mJsonInput" accept=".json,application/json" multiple style="display:none">
+      <span class="status" id="mJsonStatus" style="margin:0; align-self:center;">챗봇이 준 .json 파일을 한꺼번에 올리면 각 파일이 논문 1편으로 누적됩니다.</span>
+    </div>
   </section>
 
   <!-- M3. 진행 상황 -->
@@ -1307,9 +1355,9 @@ function nuquestPromptPack() {
     '■ 사용법',
     '1) 이 프롬프트 전체를 ChatGPT(또는 Claude 등 PDF 업로드가 되는 챗봇)에 붙여넣으세요.',
     '2) 평가할 RCT 논문 PDF 1편을 같은 대화에 첨부하세요.',
-    '3) 챗봇이 아래 스키마의 JSON을 출력합니다. 그 JSON 전체({ 부터 } 까지)를 복사하세요.',
-    '4) 이 도구 ① 탭 "🤖 ChatGPT 등 챗봇으로 평가" 칸에 붙이고 [＋ 결과 추가]를 누르면 점수·판정·엑셀이 API와 동일하게 생성됩니다.',
-    '※ 한 번에 논문 1편만. 여러 편은 각각 새 대화로 반복하세요.',
+    '3) 챗봇에게 결과를 아래 스키마의 JSON으로 달라고 하세요. 가능하면 "다운로드 가능한 .json 파일"로 요청하고, 안 되면 출력된 JSON을 메모장에 붙여 .json으로 저장하세요.',
+    '4) 이 도구 ① 탭 "🤖 챗봇으로 평가"에서 그 .json 파일을 업로드(여러 편 한꺼번에 가능)하거나, JSON 텍스트를 붙여넣고 [＋ 결과 추가]를 누르면 점수·판정·엑셀이 API와 동일하게 생성됩니다.',
+    '※ 논문 1편 = JSON 1개(객체). 여러 편을 한 파일에 넣을 땐 JSON 배열 [ {...}, {...} ]로 주세요.',
     '',
     '──────────────────────────────',
     '',
@@ -1317,6 +1365,47 @@ function nuquestPromptPack() {
     '',
     SYSTEM_PROMPT,
   ].join('\n');
+}
+
+// ===== 챗봇 JSON 결과 공용 헬퍼 (붙여넣기 텍스트·업로드 파일 모두) =====
+function parseLooseJson(text) {
+  try { return JSON.parse(text); } catch (e) {}
+  const oi = text.indexOf('{'), ai = text.indexOf('[');
+  if (oi < 0 && ai < 0) return null;
+  let s, close;
+  if (ai >= 0 && (oi < 0 || ai < oi)) { s = ai; close = ']'; } else { s = oi; close = '}'; }
+  const e = text.lastIndexOf(close);
+  if (e <= s) return null;
+  try { return JSON.parse(text.slice(s, e + 1)); } catch (err) { return null; }
+}
+function jsonPapers(parsed) { return Array.isArray(parsed) ? parsed : [parsed]; }  // 배열=여러 논문, 객체=1편
+// 여러 .json 파일 업로드 처리: 각 파일→(배열이면 논문별) perPaper(obj,label) 호출
+function handleJsonFiles(files, perPaper, statusEl, afterAll) {
+  const arr = Array.from(files).filter(f => /\.json$/i.test(f.name) || f.type === 'application/json');
+  if (!arr.length) { if (statusEl) { statusEl.textContent = '❌ .json 파일을 선택하세요.'; statusEl.style.color = '#b42318'; } return; }
+  let ok = 0, fail = 0, done = 0; const msgs = [];
+  arr.forEach(f => {
+    const rd = new FileReader();
+    rd.onload = () => {
+      const parsed = parseLooseJson(rd.result || '');
+      const base = f.name.replace(/\.json$/i, '');
+      if (!parsed) { fail++; msgs.push('✗ ' + f.name + ': JSON 파싱 실패'); }
+      else {
+        try {
+          const papers = jsonPapers(parsed); let added = 0;
+          papers.forEach((p, idx) => { const lbl = papers.length > 1 ? base + ' (' + (idx + 1) + ')' : base; if (perPaper(p, lbl)) added++; });
+          if (added) { ok += added; msgs.push('✓ ' + f.name + ': ' + added + '편'); } else { fail++; msgs.push('✗ ' + f.name + ': 유효한 결과 없음'); }
+        } catch (err) { fail++; msgs.push('✗ ' + f.name + ': ' + (err.message || '').slice(0, 60)); }
+      }
+      done++;
+      if (done === arr.length) {
+        if (statusEl) { statusEl.innerHTML = `✅ ${ok}편 추가${fail ? ` · ✗ 실패 ${fail}` : ''}<br>` + msgs.map(escapeHTML).join('<br>'); statusEl.style.color = fail ? '#b45309' : '#0a7d33'; }
+        if (afterAll) afterAll(ok);
+      }
+    };
+    rd.onerror = () => { fail++; done++; msgs.push('✗ ' + f.name + ': 읽기 실패'); if (done === arr.length && afterAll) afterAll(ok); };
+    rd.readAsText(f);
+  });
 }
 const SCORE_A_NOTE = '※ 해당 총점은 농산물 특성에 따라 영양특화 항목의 가중치를 낮춘 결과입니다.';
 const SCORE_B_NOTE = '※ 해당 총점은 NUQUEST 평가도구 원 기준에 따른 결과입니다.';
@@ -1680,6 +1769,19 @@ document.getElementById('downloadPromptBtn').addEventListener('click', () => {
   const blob = new Blob([nuquestPromptPack()], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'NUQUEST_챗봇_프롬프트.txt';
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+});
+// ① NUQUEST JSON 파일 업로드(여러 개)
+function addNuquestJsonPaper(parsed, label) {
+  if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return false;
+  allResults.push(buildNuquestResult(parsed, label, { sourceMode: 'chatbot', paperTitle: label }));
+  return true;
+}
+document.getElementById('nqJsonUploadBtn').addEventListener('click', () => document.getElementById('nqJsonInput').click());
+document.getElementById('nqJsonInput').addEventListener('change', e => {
+  handleJsonFiles(e.target.files, addNuquestJsonPaper, document.getElementById('nqJsonStatus'), (ok) => {
+    if (ok > 0) { resultsSection.style.display = 'block'; renderAllResults(); resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+  e.target.value = '';
 });
 document.getElementById('addPasteBtn').addEventListener('click', () => {
   const raw = document.getElementById('pasteJson').value || '';
@@ -2174,23 +2276,16 @@ async function gExtractOne(entry, label, spaceBefore) {
       userParts = userParts.concat(suppParts);
     }
     const res = await callGeminiCore(apiKey, userParts, setStep, GRADE_SYSTEM_PROMPT);
-    // 재시도 시 같은 파일의 기존 행 제거(중복 방지)
-    gAllRows = gAllRows.filter(r => r.fileName !== entry.file.name);
-    if (res.is_review === false) {
+    const gr = addGradeOutcomes(res, entry.file.name);
+    if (gr.notReview) {
       gFailLi(entry, label, 'SR/UR/MA가 아닌 것으로 판단됨 — 표가 그림에 있으면 원본(표·그림) 판독을 켜고 다시 시도해 보세요.', '제외');
       return false;
     }
-    const outcomes = res.outcomes || [];
-    const paperName = res.paper || deriveTitle(entry.file.name);
-    outcomes.forEach(o => {
-      gAllRows.push({ paper: paperName, fileName: entry.file.name, reviewType: res.review_type || '', o, ov: {},
-        claimId: suggestClaimId(paperName), hcCode: suggestHcCode(o.functional, o.marker) });
-    });
-    if (outcomes.length === 0) {
+    if (gr.added === 0) {
       gFailLi(entry, label, '결과지표 추출 0 — SoF표가 그림/표에 있을 수 있습니다. 원본(표·그림) 판독을 켜고 다시 시도하세요.', '지표 0');
       return false;
     }
-    li.innerHTML = `<span class="badge done">완료</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${outcomes.length}개</span>`;
+    li.innerHTML = `<span class="badge done">완료</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${gr.added}개</span>`;
     return true;
   } catch (err) {
     console.error(err);
@@ -2207,6 +2302,60 @@ function gFailLi(entry, label, msg, badge) {
     if (gAllRows.length > 0) { gResultsSection.style.display = 'block'; renderGradeResults(); }
   });
 }
+// GRADE 결과(JSON) → gAllRows (API·챗봇 공용)
+function addGradeOutcomes(res, fileName) {
+  gAllRows = gAllRows.filter(r => r.fileName !== fileName);   // 같은 파일 재추가 시 교체
+  if (res && res.is_review === false) return { added: 0, notReview: true };
+  const outcomes = (res && res.outcomes) || [];
+  const paperName = (res && res.paper) || deriveTitle(fileName);
+  outcomes.forEach(o => {
+    gAllRows.push({ paper: paperName, fileName: fileName, reviewType: (res && res.review_type) || '', o, ov: {},
+      claimId: suggestClaimId(paperName), hcCode: suggestHcCode(o.functional, o.marker) });
+  });
+  return { added: outcomes.length };
+}
+// ③ 챗봇 프롬프트 팩
+function gradePromptPack() {
+  return [
+    '[SR/UR 근거확실성(GRADE) 평가 — 챗봇용 프롬프트]',
+    '',
+    '■ 사용법',
+    '1) 이 프롬프트 전체를 PDF 업로드가 되는 챗봇에 붙여넣으세요.',
+    '2) SR·UR·메타분석(MA) 논문 PDF 1편을 첨부하세요.',
+    '3) 결과를 아래 스키마의 JSON으로 받으세요(가능하면 다운로드 가능한 .json 파일로 요청, 아니면 .json으로 저장).',
+    '4) 이 도구 ③ 탭 "🤖 챗봇으로 평가"에서 .json 파일을 업로드(여러 편 한꺼번에)하면 GRADE 표·엑셀이 API와 동일하게 생성됩니다.',
+    '※ 논문 1편 = JSON 1개(객체). 여러 편은 배열 [ {...}, {...} ]로도 가능.',
+    '',
+    '──────────────────────────────',
+    '',
+    '첨부한 SR/UR/MA PDF 1편을 표·그림(SoF표·forest plot 포함)까지 읽고(스캔본이면 OCR) 아래 지침으로 평가하세요.',
+    '',
+    GRADE_SYSTEM_PROMPT,
+  ].join('\n');
+}
+function gAddJsonPaper(parsed, label) {
+  if (!parsed) return false;
+  return addGradeOutcomes(parsed, label).added > 0;
+}
+document.getElementById('gCopyPromptBtn').addEventListener('click', () => {
+  const st = document.getElementById('gCopyPromptStatus');
+  const txt = gradePromptPack();
+  const done = () => { st.textContent = '✅ 복사됨 — 챗봇에 붙여넣고 SR/UR PDF를 첨부하세요.'; st.style.color = '#0a7d33'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(() => { fallbackCopyText(txt); done(); });
+  else { fallbackCopyText(txt); done(); }
+});
+document.getElementById('gDownloadPromptBtn').addEventListener('click', () => {
+  const blob = new Blob([gradePromptPack()], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'GRADE_SRUR_챗봇_프롬프트.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+});
+document.getElementById('gJsonUploadBtn').addEventListener('click', () => document.getElementById('gJsonInput').click());
+document.getElementById('gJsonInput').addEventListener('change', e => {
+  handleJsonFiles(e.target.files, gAddJsonPaper, document.getElementById('gJsonStatus'), (ok) => {
+    if (ok > 0) { gResultsSection.style.display = 'block'; renderGradeResults(); }
+  });
+  e.target.value = '';
+});
 gEvaluateBtn.addEventListener('click', async () => {
   const apiKey = localStorage.getItem(KEY_STORAGE);
   if (!apiKey) { alert('먼저 Gemini API 키를 저장하세요.'); return; }
@@ -2611,6 +2760,77 @@ mResetBtn.addEventListener('click', () => {
   document.getElementById('mResults').innerHTML = '';
 });
 
+// 추출 결과(JSON) → mExtractRows (API·챗봇 공용). 목표지표 필터 반영.
+function addExtractComparisons(res, fileName) {
+  let comps = (res && res.comparisons) || [];
+  const raw = comps.length; let filtered = 0;
+  const mTargets = (document.getElementById('mTargetInput').value || '').trim();
+  const mOnlyTargets = document.getElementById('mOnlyTarget').checked;
+  if (mOnlyTargets && mTargets) {
+    const groups = parseTargetGroups(mTargets);
+    const kept = comps.filter(cmp => matchesTargetGroups(cmp.variable, groups));
+    filtered = comps.length - kept.length; comps = kept;
+  }
+  const sid = res.study_id || deriveTitle(fileName);
+  mExtractRows = mExtractRows.filter(r => r.fileName !== fileName);   // 같은 파일 재추가 시 교체
+  comps.forEach(cmp => {
+    const arm = (cmp.arm_label || '').trim();
+    mExtractRows.push({
+      uid: 'x' + (mRowSeq++), study_id: sid, arm_label: arm, study: arm ? (sid + '_' + arm) : sid, fileName: fileName,
+      design: res.design || 'parallel', asian_eth: res.asian_ethnicity === true, asian_var: res.asian_variety === true,
+      variable: cmp.variable || '', unit: cmp.unit || '', t: cmp.treatment || {}, c: cmp.control || {}
+    });
+  });
+  return { kept: comps.length, raw, filtered };
+}
+// ② 챗봇 프롬프트 팩 (목표지표 설정 반영)
+function extractPromptPack() {
+  const mTargets = (document.getElementById('mTargetInput').value || '').trim();
+  const mOnlyTargets = document.getElementById('mOnlyTarget').checked;
+  const targetLine = mTargets
+    ? '\n[목표 지표] ' + (mOnlyTargets ? '오직 다음 지표(들)만 추출하고 나머지는 무시' : '다음 지표(들)를 우선 추출(그 외도 함께)') + '. 괄호 약어=정식명 동일 지표로 통일: ' + mTargets + '.'
+    : '';
+  return [
+    '[개별 RCT 메타분석 자료 추출 — 챗봇용 프롬프트]',
+    '',
+    '■ 사용법',
+    '1) 이 프롬프트 전체를 PDF 업로드가 되는 챗봇에 붙여넣으세요.',
+    '2) 개별 RCT 논문 PDF 1편을 첨부하세요.',
+    '3) 결과를 아래 스키마의 JSON으로 받으세요(가능하면 다운로드 가능한 .json 파일로 요청, 아니면 .json으로 저장).',
+    '4) 이 도구 ② 탭 "🤖 챗봇으로 추출"에서 .json 파일을 업로드(여러 편 한꺼번에)하면 지표별 요약·엑셀이 API와 동일하게 생성됩니다.',
+    '※ 논문 1편 = JSON 1개(객체). 여러 편은 배열 [ {...}, {...} ]로도 가능.',
+    '',
+    '──────────────────────────────',
+    '',
+    '첨부한 개별 RCT PDF 1편을 표·그림까지 읽고(스캔본이면 OCR) 아래 지침으로 원자료를 추출하세요.' + targetLine,
+    '',
+    EXTRACT_SYSTEM_PROMPT,
+  ].join('\n');
+}
+function mAddExtractJsonPaper(parsed, label) {
+  if (!parsed || !Array.isArray(parsed.comparisons)) return false;
+  return addExtractComparisons(parsed, label).kept > 0;
+}
+document.getElementById('mCopyPromptBtn').addEventListener('click', () => {
+  const st = document.getElementById('mCopyPromptStatus');
+  const txt = extractPromptPack();
+  const done = () => { st.textContent = '✅ 복사됨 — 챗봇에 붙여넣고 논문 PDF를 첨부하세요.'; st.style.color = '#0a7d33'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(() => { fallbackCopyText(txt); done(); });
+  else { fallbackCopyText(txt); done(); }
+});
+document.getElementById('mDownloadPromptBtn').addEventListener('click', () => {
+  const blob = new Blob([extractPromptPack()], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '개별RCT추출_챗봇_프롬프트.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+});
+document.getElementById('mJsonUploadBtn').addEventListener('click', () => document.getElementById('mJsonInput').click());
+document.getElementById('mJsonInput').addEventListener('change', e => {
+  handleJsonFiles(e.target.files, mAddExtractJsonPaper, document.getElementById('mJsonStatus'), (ok) => {
+    if (ok > 0) { document.getElementById('mResultsSection').style.display = 'block'; renderExtractSummary(); }
+  });
+  e.target.value = '';
+});
+
 // 파이프라인 (누적)
 const mProgressCard = document.getElementById('mProgressCard');
 const mProgressList = document.getElementById('mProgressList');
@@ -2645,42 +2865,15 @@ async function mExtractOne(entry, label, spaceBefore) {
       userParts = userParts.concat(suppParts);
     }
     const res = await callGeminiCore(apiKey, userParts, setStep, EXTRACT_SYSTEM_PROMPT);
-    let comps = res.comparisons || [];
-    const rawCount = comps.length;
-    let filteredOut = 0;
-    if (mOnlyTargets && mTargets) {
-      const groups = parseTargetGroups(mTargets);
-      const kept = comps.filter(cmp => matchesTargetGroups(cmp.variable, groups));
-      filteredOut = comps.length - kept.length;
-      comps = kept;
-    }
-    const sid = res.study_id || deriveTitle(entry.file.name);
-    // 재추출/재시도 시 같은 파일의 기존 행 제거(중복 방지)
-    mExtractRows = mExtractRows.filter(r => r.fileName !== entry.file.name);
-    comps.forEach(cmp => {
-      const arm = (cmp.arm_label || '').trim();
-      mExtractRows.push({
-        uid: 'x' + (mRowSeq++),
-        study_id: sid,
-        arm_label: arm,
-        study: arm ? (sid + '_' + arm) : sid,   // arm 분리 시 별개 연구로 취급
-        fileName: entry.file.name,   // NUQUEST 비뚤림위험 연계용 매칭 키
-        design: res.design || 'parallel',
-        asian_eth: res.asian_ethnicity === true,
-        asian_var: res.asian_variety === true,
-        variable: cmp.variable || '',
-        unit: cmp.unit || '',
-        t: cmp.treatment || {}, c: cmp.control || {}
-      });
-    });
-    if (comps.length === 0) {
-      const msg = (rawCount > 0 && filteredOut > 0)
-        ? `${rawCount}개 추출됐으나 목표 지표 필터로 모두 제외됨 — 목표 지표명을 논문 표기(약어 포함)에 맞추거나 '지정 지표만 추출'을 끄고 다시 시도하세요.`
+    const outc = addExtractComparisons(res, entry.file.name);
+    if (outc.kept === 0) {
+      const msg = (outc.raw > 0 && outc.filtered > 0)
+        ? `${outc.raw}개 추출됐으나 목표 지표 필터로 모두 제외됨 — 목표 지표명을 논문 표기(약어 포함)에 맞추거나 '지정 지표만 추출'을 끄고 다시 시도하세요.`
         : '추출된 지표 없음 — 데이터가 표/그림에 있거나 형식이 복잡할 수 있습니다. 다시 시도하거나 목표 지표를 지정해 보세요.';
       mFailLi(entry, label, msg, '지표 0');
       return false;
     }
-    li.innerHTML = `<span class="badge done">완료</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${comps.length}개 추출</span>`;
+    li.innerHTML = `<span class="badge done">완료</span><span>${label}. ${escapeHTML(entry.file.name)}</span><span class="size">지표 ${outc.kept}개 추출</span>`;
     return true;
   } catch (err) {
     console.error(err);
