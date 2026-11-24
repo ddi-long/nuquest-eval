@@ -370,6 +370,28 @@
   .agree-flag.near { background: #fef3c7; color: #92400e; }
   .agree-flag.diff { background: #fee2e2; color: #991b1b; }
 
+  /* AI–연구자 일치도 코너 패널 */
+  #agreePanel {
+    position: fixed; right: 18px; bottom: 18px; z-index: 60;
+    width: 232px; background: #fff; border: 1px solid #e1e5eb; border-radius: 12px;
+    box-shadow: 0 8px 24px -8px rgba(0,0,0,0.3); padding: 12px 14px; display: none;
+    font-size: 12.5px;
+  }
+  #agreePanel .ap-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  #agreePanel .ap-title { font-weight: 700; font-size: 12.5px; color: #1f2933; }
+  #agreePanel .ap-min { border: none; background: transparent; cursor: pointer; color: #6b7480; font-size: 15px; padding: 0 2px; line-height: 1; }
+  #agreePanel .ap-body { display: flex; align-items: center; gap: 12px; }
+  #agreePanel.min .ap-body, #agreePanel.min .ap-foot { display: none; }
+  #agreePanel .ap-legend { font-size: 11.5px; line-height: 1.7; }
+  #agreePanel .ap-legend b { font-variant-numeric: tabular-nums; }
+  #agreePanel .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  #agreePanel .ap-foot { margin-top: 9px; font-size: 11px; color: #6b7480; border-top: 1px solid #eef1f4; padding-top: 7px; }
+  #agreeReopen {
+    position: fixed; right: 18px; bottom: 18px; z-index: 60; display: none;
+    background: #2563eb; color: #fff; border: none; border-radius: 20px; cursor: pointer;
+    padding: 8px 14px; font-size: 12.5px; font-weight: 600; box-shadow: 0 6px 16px -6px rgba(0,0,0,0.4);
+  }
+
   details.evidence-toggle { margin-top: 6px; }
   details.evidence-toggle > summary {
     cursor: pointer;
@@ -821,6 +843,17 @@
 </div><!-- /mode-extract -->
 
 </div>
+
+<!-- AI–연구자 일치도 (①탭 검토자 판정 집계) -->
+<div id="agreePanel">
+  <div class="ap-head">
+    <span class="ap-title">AI–연구자 일치도</span>
+    <button class="ap-min" id="agreeMinBtn" title="접기">—</button>
+  </div>
+  <div class="ap-body" id="agreeBody"></div>
+  <div class="ap-foot" id="agreeFoot"></div>
+</div>
+<button id="agreeReopen">📊 일치도</button>
 
 <script>
 // =============================================================
@@ -1568,7 +1601,72 @@ function renderAgreeFlag(spanEl, aiJ, userJ) {
   spanEl.className = 'agree-flag ' + info.cls;
   spanEl.textContent = info.text;
   spanEl.style.display = '';
+  renderAgreePanel();
 }
+
+// ===== AI–연구자 일치도 집계 + 코너 차트 =====
+function computeAgreement() {
+  let same = 0, near = 0, diff = 0, itemsTotal = 0;
+  allResults.forEach(r => (r.items || []).forEach(it => {
+    itemsTotal++;
+    const info = agreeInfo(it.judgment, it.userJudgment);
+    if (!info) return;
+    if (info.cls === 'same') same++; else if (info.cls === 'near') near++; else diff++;
+  }));
+  const entered = same + near + diff;
+  return { same, near, diff, entered, itemsTotal, notEntered: itemsTotal - entered };
+}
+// 도넛(파이) SVG — 3구간
+function donutSvg(same, near, diff) {
+  const total = same + near + diff;
+  const segs = [['#10b981', same], ['#f59e0b', near], ['#ef4444', diff]];
+  const r = 42, C = 2 * Math.PI * r;
+  let acc = 0, arcs = '';
+  if (total > 0) {
+    segs.forEach(([color, v]) => {
+      if (v <= 0) return;
+      const frac = v / total;
+      arcs += `<circle cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="16" stroke-dasharray="${(frac*C).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-acc*C).toFixed(2)}" transform="rotate(-90 60 60)"></circle>`;
+      acc += frac;
+    });
+  }
+  const bg = `<circle cx="60" cy="60" r="${r}" fill="none" stroke="#edf0f3" stroke-width="16"></circle>`;
+  const pct = total > 0 ? Math.round(same / total * 100) : 0;
+  const center = total > 0
+    ? `<text x="60" y="56" text-anchor="middle" font-size="24" font-weight="700" fill="#111827">${pct}%</text><text x="60" y="76" text-anchor="middle" font-size="11" fill="#6b7480">일치율</text>`
+    : `<text x="60" y="64" text-anchor="middle" font-size="12" fill="#9aa2ad">판정 전</text>`;
+  return `<svg width="92" height="92" viewBox="0 0 120 120">${bg}${arcs}${center}</svg>`;
+}
+function renderAgreePanel() {
+  const panel = document.getElementById('agreePanel');
+  const reopen = document.getElementById('agreeReopen');
+  if (!panel) return;
+  const nuquestActive = document.getElementById('mode-nuquest').style.display !== 'none';
+  const a = computeAgreement();
+  const show = nuquestActive && a.itemsTotal > 0;
+  if (!show) { panel.style.display = 'none'; reopen.style.display = 'none'; return; }
+  const minimized = panel.classList.contains('min');
+  panel.style.display = minimized ? 'none' : 'block';
+  reopen.style.display = minimized ? 'block' : 'none';
+  if (minimized) { reopen.textContent = `📊 일치 ${a.entered ? Math.round(a.same / a.entered * 100) : 0}%`; return; }
+  document.getElementById('agreeBody').innerHTML =
+    donutSvg(a.same, a.near, a.diff)
+    + `<div class="ap-legend">`
+    + `<div><span class="dot" style="background:#10b981"></span>일치 <b>${a.same}</b></div>`
+    + `<div><span class="dot" style="background:#f59e0b"></span>경미한 차이 <b>${a.near}</b></div>`
+    + `<div><span class="dot" style="background:#ef4444"></span>불일치 <b>${a.diff}</b></div>`
+    + `</div>`;
+  const agreeLoose = a.entered ? Math.round((a.same + a.near) / a.entered * 100) : 0;
+  document.getElementById('agreeFoot').innerHTML =
+    `내 판정 입력 <b>${a.entered}</b>/${a.itemsTotal}항목${a.notEntered ? ` · 미입력 ${a.notEntered}` : ''}`
+    + (a.entered ? `<br>경미한 차이까지 일치로 보면 <b>${agreeLoose}%</b>` : '');
+}
+(function initAgreePanel() {
+  const min = document.getElementById('agreeMinBtn');
+  const reopen = document.getElementById('agreeReopen');
+  if (min) min.addEventListener('click', () => { document.getElementById('agreePanel').classList.add('min'); renderAgreePanel(); });
+  if (reopen) reopen.addEventListener('click', () => { document.getElementById('agreePanel').classList.remove('min'); renderAgreePanel(); });
+})();
 
 function scoreCardHTML(label, score, note) {
   const cls = (score === '우수' || score === '보통' || score === '부족') ? score : '평가불가';
@@ -1698,6 +1796,7 @@ function renderAllResults() {
       saveReview(allResults[ri].fileName, id, { n: e.target.value });
     });
   });
+  renderAgreePanel();
 }
 
 document.getElementById('downloadAllBtn').addEventListener('click', () => {
@@ -2001,6 +2100,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       const el = document.getElementById('mode-' + m);
       if (el) el.style.display = (mode === m) ? '' : 'none';
     });
+    renderAgreePanel();
   });
 });
 
