@@ -1616,6 +1616,28 @@ function computeAgreement() {
   const entered = same + near + diff;
   return { same, near, diff, entered, itemsTotal, notEntered: itemsTotal - entered };
 }
+// ===== 도구 누적 일치도 (export 시 집계, 브라우저에 영속) =====
+const AGREE_CUM = 'nuquest_agree_cum_v1';
+function loadCum() { try { const o = JSON.parse(localStorage.getItem(AGREE_CUM) || '{}'); return (o && o.map) ? o : { map: {} }; } catch (e) { return { map: {} }; } }
+function saveCum(c) { localStorage.setItem(AGREE_CUM, JSON.stringify(c)); }
+// export 시 호출: 현재 결과의 '내 판정' 항목을 (파일|항목) 키로 누적에 반영(재export 시 중복 없음)
+function recordExportToCumulative(results) {
+  const c = loadCum();
+  (results || allResults).forEach(r => (r.items || []).forEach(it => {
+    const key = r.fileName + '|' + it.item_id;
+    const info = agreeInfo(it.judgment, it.userJudgment);
+    if (info) c.map[key] = info.cls; else delete c.map[key];
+  }));
+  saveCum(c);
+}
+function cumulativeStats() {
+  const c = loadCum(); let same = 0, near = 0, diff = 0; const papers = {};
+  Object.keys(c.map).forEach(k => { const v = c.map[k]; if (v === 'same') same++; else if (v === 'near') near++; else if (v === 'diff') diff++; papers[k.slice(0, k.lastIndexOf('|'))] = 1; });
+  return { same, near, diff, entered: same + near + diff, papers: Object.keys(papers).length };
+}
+function resetCumulative() {
+  if (confirm('이 도구의 누적 일치도 기록을 초기화할까요?\n(이 브라우저에 저장된 값만 지워집니다)')) { localStorage.removeItem(AGREE_CUM); renderAgreePanel(); }
+}
 // 도넛(파이) SVG — 3구간
 function donutSvg(same, near, diff) {
   const total = same + near + diff;
@@ -1643,23 +1665,39 @@ function renderAgreePanel() {
   if (!panel) return;
   const nuquestActive = document.getElementById('mode-nuquest').style.display !== 'none';
   const a = computeAgreement();
-  const show = nuquestActive && a.itemsTotal > 0;
+  const cum = cumulativeStats();
+  const show = nuquestActive && (a.itemsTotal > 0 || cum.entered > 0);
   if (!show) { panel.style.display = 'none'; reopen.style.display = 'none'; return; }
   const minimized = panel.classList.contains('min');
   panel.style.display = minimized ? 'none' : 'block';
   reopen.style.display = minimized ? 'block' : 'none';
-  if (minimized) { reopen.textContent = `📊 일치 ${a.entered ? Math.round(a.same / a.entered * 100) : 0}%`; return; }
-  document.getElementById('agreeBody').innerHTML =
-    donutSvg(a.same, a.near, a.diff)
-    + `<div class="ap-legend">`
-    + `<div><span class="dot" style="background:#10b981"></span>일치 <b>${a.same}</b></div>`
-    + `<div><span class="dot" style="background:#f59e0b"></span>경미한 차이 <b>${a.near}</b></div>`
-    + `<div><span class="dot" style="background:#ef4444"></span>불일치 <b>${a.diff}</b></div>`
+  const pctOf = (s) => s.entered ? Math.round(s.same / s.entered * 100) : 0;
+  if (minimized) { const base = a.itemsTotal > 0 ? a : cum; reopen.textContent = `📊 일치 ${pctOf(base)}%`; return; }
+  const legend = (s) => `<div class="ap-legend">`
+    + `<div><span class="dot" style="background:#10b981"></span>일치 <b>${s.same}</b></div>`
+    + `<div><span class="dot" style="background:#f59e0b"></span>경미한 차이 <b>${s.near}</b></div>`
+    + `<div><span class="dot" style="background:#ef4444"></span>불일치 <b>${s.diff}</b></div>`
     + `</div>`;
-  const agreeLoose = a.entered ? Math.round((a.same + a.near) / a.entered * 100) : 0;
-  document.getElementById('agreeFoot').innerHTML =
-    `내 판정 입력 <b>${a.entered}</b>/${a.itemsTotal}항목${a.notEntered ? ` · 미입력 ${a.notEntered}` : ''}`
-    + (a.entered ? `<br>경미한 차이까지 일치로 보면 <b>${agreeLoose}%</b>` : '');
+  let footHtml = '';
+  if (a.itemsTotal > 0) {
+    // 현재 로드된 논문들의 일치도 = 메인 도넛
+    document.getElementById('agreeBody').innerHTML = donutSvg(a.same, a.near, a.diff) + legend(a);
+    const loose = pctOf({ same: a.same + a.near, entered: a.entered });
+    footHtml = `이번 세션 내 판정 <b>${a.entered}</b>/${a.itemsTotal}항목${a.notEntered ? ` · 미입력 ${a.notEntered}` : ''}`
+      + (a.entered ? ` · 경미차이 포함 <b>${loose}%</b>` : '');
+  } else {
+    // 로드된 결과 없음 → 누적을 메인 도넛으로
+    document.getElementById('agreeBody').innerHTML = donutSvg(cum.same, cum.near, cum.diff) + legend(cum);
+  }
+  if (cum.entered > 0) {
+    footHtml += (footHtml ? '<hr style="border:none;border-top:1px solid #eef1f4;margin:6px 0;">' : '')
+      + `🏛 <b>도구 누적 일치도 ${pctOf(cum)}%</b> · ${cum.entered}항목 · ${cum.papers}편`
+      + ` <button id="agreeResetBtn" title="누적 초기화" style="border:none;background:transparent;color:#9aa2ad;cursor:pointer;font-size:11px;padding:0 2px;">⟳</button>`;
+  } else if (a.itemsTotal > 0) {
+    footHtml += `<hr style="border:none;border-top:1px solid #eef1f4;margin:6px 0;">🏛 누적 일치도는 <b>엑셀 다운로드</b> 시 기록됩니다.`;
+  }
+  document.getElementById('agreeFoot').innerHTML = footHtml;
+  const rb = document.getElementById('agreeResetBtn'); if (rb) rb.addEventListener('click', resetCumulative);
 }
 (function initAgreePanel() {
   const min = document.getElementById('agreeMinBtn');
@@ -1768,6 +1806,8 @@ function renderAllResults() {
     btn.addEventListener('click', e => {
       const idx = parseInt(e.currentTarget.dataset.idx);
       downloadExcel([allResults[idx]], 'NUQUEST_' + safeFilename(allResults[idx].paperTitle) + '.xlsx');
+      recordExportToCumulative([allResults[idx]]);
+      renderAgreePanel();
     });
   });
 
@@ -1802,6 +1842,8 @@ function renderAllResults() {
 document.getElementById('downloadAllBtn').addEventListener('click', () => {
   if (allResults.length === 0) return;
   downloadExcel(allResults, 'NUQUEST_results_' + dateStamp() + '.xlsx');
+  recordExportToCumulative(allResults);
+  renderAgreePanel();
 });
 
 // NUQUEST 결과 → GRADE 비뚤림위험 연계용 저장 (파일명 기준, 기관·NUQUEST 총점)
